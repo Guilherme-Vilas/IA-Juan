@@ -1,0 +1,443 @@
+import { chat, type ChatMessage } from "../core/llm.js";
+import { SDR_TOOLS } from "./tools.js";
+import { sanitizeReply, type ExtractedCall } from "./sanitize.js";
+import { prompts, contextFor } from "./prompts/loader.js";
+import { lookupPricing, type PricingTipo } from "./pricing.js";
+import {
+  closeConversation,
+  getLead,
+  logMessage,
+  markLastActivity,
+  reopenConversation,
+  updateLead,
+  upsertLead,
+  type ClosedReason,
+  type LeadRow,
+  type LeadState,
+  type Slots,
+} from "../core/db.js";
+import { redis, keys } from "../core/redis.js";
+import { config } from "../config.js";
+import { logger } from "../core/logger.js";
+import { notifyJuan, pauseAi } from "./handoff.js";
+import { confirmSlot, fetchAndCacheSlots, formatOffer, getOfferedSlots } from "./scheduler.js";
+
+const HISTORY_LIMIT = 10;
+
+async function pushHistory(waId: string, role: "user" | "assistant", content: string) {
+  const k = keys.leadHistory(waId);
+  await redis.rpush(k, JSON.stringify({ role, content }));
+  await redis.ltrim(k, -HISTORY_LIMIT, -1);
+  await redis.expire(k, config.LEAD_STATE_TTL_SECONDS);
+}
+
+async function loadHistory(waId: string): Promise<ChatMessage[]> {
+  const items = await redis.lrange(keys.leadHistory(waId), 0, -1);
+  return items
+    .map((x) => {
+      try {
+        return JSON.parse(x) as ChatMessage;
+      } catch {
+        return null;
+      }
+    })
+    .filter((x): x is ChatMessage => !!x);
+}
+
+function buildSystemPrompt(lead: LeadRow, reopenedFrom?: ClosedReason | null): string {
+  const extra = contextFor(lead.state);
+  const parts = [prompts.system];
+  if (extra) {
+    parts.push("", "---", "", "# Contexto adicional pra este estado", extra);
+  }
+  parts.push(
+    "",
+    "---",
+    "",
+    "# Contexto do lead",
+    `- estado (meta atual): ${lead.state}`,
+    `- slots: ${JSON.stringify(lead.slots)}`,
+    lead.nome ? `- nome: ${lead.nome}` : "- nome: ainda não sei",
+  );
+
+  if (reopenedFrom) {
+    const motivos: Record<ClosedReason, string> = {
+      scheduled:
+        "AGENDADA com o Juan. Lead voltou a falar — pode ser dúvida pré-call, pedido pra remarcar, ou continuação da conversa. Reconheça o agendamento (ex.: 'oi, vamos nos falar dia X com o Juan né?') e responda o que ele trouxer.",
+      not_interested:
+        "Lead havia dito que NÃO TINHA INTERESSE. Voltou agora. Recebe com naturalidade e curiosidade ('que bom te ver de volta — mudou algo no seu cenário?'). Não force a venda; descubra o gatilho que o trouxe.",
+      postponed:
+        "Lead havia pedido pra CONVERSAR DEPOIS. Voltou agora. Retoma de onde parou com leveza ('oi! pronto pra retomar?') e relembra o último contexto se necessário.",
+      handoff:
+        "Conversa havia ido pra HANDOFF humano. Lead voltou. Se a IA não estiver pausada manualmente, retome a conversa com naturalidade e contexto.",
+      no_response:
+        "Lead tinha ficado SEM RESPONDER e a conversa foi fechada por inatividade. Voltou agora. Recebe sem cobrança ('oi! que bom que apareceu — em que posso te ajudar?').",
+    };
+    parts.push(
+      "",
+      "## ⚠️ RETORNO de conversa fechada",
+      `Esta conversa estava fechada com motivo: \`${reopenedFrom}\`.`,
+      motivos[reopenedFrom] ?? "Lead voltou. Recebe com naturalidade.",
+    );
+  }
+
+  parts.push(
+    "",
+    "Curto. Consultora, não formulário. Nunca escreva <function> ou JSON no texto.",
+  );
+  return parts.join("\n");
+}
+
+function normalizeInteresse(v: unknown): Slots["interesse"] | undefined {
+  if (typeof v !== "string") return undefined;
+  const s = v.trim().toLowerCase();
+  if (!s) return undefined;
+  if (s.includes("imov") || s.includes("casa") || s.includes("apart")) return "imovel";
+  if (s.includes("auto") || s.includes("carro") || s.includes("moto") || s.includes("veic"))
+    return "auto";
+  if (s.includes("invest") || s.includes("patrim") || s.includes("renda")) return "investimento";
+  if (["imovel", "auto", "investimento", "outro"].includes(s))
+    return s as Slots["interesse"];
+  return "outro";
+}
+
+function cleanSlotsPayload(raw: Record<string, unknown>): Partial<Slots> {
+  const out: Partial<Slots> = {};
+  if (typeof raw.nome === "string" && raw.nome.trim()) out.nome = raw.nome.trim();
+  const i = normalizeInteresse(raw.interesse);
+  if (i) out.interesse = i;
+  if (typeof raw.capacidade_mensal === "number" && raw.capacidade_mensal > 0)
+    out.capacidade_mensal = raw.capacidade_mensal;
+  if (typeof raw.valor_bem === "number" && raw.valor_bem > 0) out.valor_bem = raw.valor_bem;
+  if (typeof raw.prazo_meses === "number" && raw.prazo_meses > 0) out.prazo_meses = raw.prazo_meses;
+  if (typeof raw.intencao_lance === "boolean") out.intencao_lance = raw.intencao_lance;
+  if (typeof raw.sabe_consorcio === "boolean") out.sabe_consorcio = raw.sabe_consorcio;
+  if (typeof raw.prazo_decisao === "string" && raw.prazo_decisao.trim())
+    out.prazo_decisao = raw.prazo_decisao.trim();
+  if (typeof raw.fecha_se_proposta_boa === "boolean")
+    out.fecha_se_proposta_boa = raw.fecha_se_proposta_boa;
+  if (typeof raw.decisao_com_conjuge === "boolean")
+    out.decisao_com_conjuge = raw.decisao_com_conjuge;
+  if (typeof raw.mora_exterior === "boolean") out.mora_exterior = raw.mora_exterior;
+  if (typeof raw.observacoes === "string" && raw.observacoes.trim())
+    out.observacoes = raw.observacoes.trim();
+  return out;
+}
+
+function mergeSlots(current: Slots, incoming: Partial<Slots>): Slots {
+  return { ...current, ...incoming };
+}
+
+async function applyExtractedCalls(
+  calls: ExtractedCall[],
+  slots: Slots,
+  state: LeadState,
+  lead: LeadRow,
+  waId: string,
+): Promise<{ slots: Slots; state: LeadState; closedReason: ClosedReason | null; handoff: boolean }> {
+  let workingSlots = slots;
+  let workingState = state;
+  let closedReason: ClosedReason | null = null;
+  let handoff = false;
+
+  for (const c of calls) {
+    if (c.name === "save_slots") {
+      const cleaned = cleanSlotsPayload(c.args);
+      if (Object.keys(cleaned).length > 0) {
+        workingSlots = mergeSlots(workingSlots, cleaned);
+        workingState = autoAdvance(workingState, workingSlots);
+      }
+    } else if (c.name === "advance_state") {
+      const to = c.args.to as LeadState | undefined;
+      if (to) workingState = to;
+    } else if (c.name === "request_handoff") {
+      handoff = true;
+      closedReason = "handoff";
+      await notifyJuan({ ...lead, state: "HANDOFF", slots: workingSlots }, String(c.args.motivo ?? "handoff"));
+      await pauseAi(waId);
+    } else if (c.name === "close_conversation") {
+      closedReason = c.args.reason === "postponed" ? "postponed" : "not_interested";
+    }
+    // propose_schedule / confirm_schedule extraídos como texto são descartados de propósito
+    // (precisam do ciclo estruturado para funcionar corretamente)
+  }
+
+  return { slots: workingSlots, state: workingState, closedReason, handoff };
+}
+
+function autoAdvance(state: LeadState, slots: Slots): LeadState {
+  if (state === "S0_ABERTURA" && slots.nome) return "S1_DESCOBERTA";
+  if (state === "S1_DESCOBERTA" && slots.interesse) return "S2_QUALIFICACAO";
+  if (
+    state === "S2_QUALIFICACAO" &&
+    slots.capacidade_mensal &&
+    slots.valor_bem &&
+    slots.intencao_lance !== undefined
+  ) {
+    return "S3_EDUCACAO";
+  }
+  return state;
+}
+
+export type FsmOutput = {
+  replyText: string | null;
+  newState: LeadState;
+  closedReason: ClosedReason | null;
+  closedByHandoff?: boolean;
+};
+
+export async function runTurn(waId: string, userText: string, pushName?: string): Promise<FsmOutput> {
+  const lead = (await getLead(waId)) ?? (await upsertLead(waId, { nome: pushName ?? null }));
+
+  // ÚNICA condição que silencia a IA: pause manual do Juan.
+  // Conversa fechada/agendada/handoff: se o lead voltou a falar, IA responde
+  // (e a conversa é reaberta automaticamente).
+  if (lead.paused) {
+    logger.info({ waId, state: lead.state }, "skip: lead paused by Juan");
+    return { replyText: null, newState: lead.state, closedReason: null };
+  }
+
+  // auto-reopen se estava fechada — lead voltou a engajar
+  let reopenedFrom: ClosedReason | null = null;
+  if (lead.status === "closed") {
+    reopenedFrom = lead.closed_reason;
+    await reopenConversation(waId);
+    logger.info({ waId, reopenedFrom }, "auto-reopened: lead voltou após fechamento");
+    lead.status = "open";
+    lead.closed_reason = null;
+    lead.closed_at = null;
+  }
+
+  // userText é o agregado do debounce; cada mensagem individual já foi gravada
+  // no DB pelo webhook/simulator. Aqui só empurramos o agregado para o histórico
+  // da LLM (assim ela vê o burst concatenado num único turno).
+  await pushHistory(waId, "user", userText);
+
+  const history = await loadHistory(waId);
+  const systemPrompt = buildSystemPrompt(lead, reopenedFrom);
+
+  const messages: ChatMessage[] = [{ role: "system", content: systemPrompt }, ...history];
+
+  let workingSlots = { ...lead.slots };
+  let workingState: LeadState = lead.state;
+  let replyText: string | null = null;
+  let closedReason: ClosedReason | null = null;
+  let closedByHandoff = false;
+
+  const MAX_STEPS = 3;
+  for (let step = 0; step < MAX_STEPS; step++) {
+    // no último passo, tira as tools pra forçar uma resposta em texto ao lead
+    const useTools = step < MAX_STEPS - 1;
+    let choice;
+    try {
+      choice = await chat({
+        model: "main",
+        messages,
+        tools: useTools ? SDR_TOOLS : undefined,
+        temperature: 0.4,
+        maxTokens: 350,
+      });
+    } catch (err) {
+      const errMsg = String((err as Error)?.message ?? err ?? "");
+      const isRateLimit = errMsg.includes("rate_limit_exceeded") || (err as { status?: number })?.status === 429;
+      logger.error({ err, waId, step, isRateLimit }, "fsm: chat failed");
+
+      if (errMsg.includes("tool_use_failed") && step < MAX_STEPS - 1) {
+        // tool call rejeitada pelo validador — tenta de novo sem tools
+        messages.push({
+          role: "system",
+          content:
+            "Sua última tool call foi rejeitada pelo validador. Responda ao lead em texto natural agora, sem tools. Não envie JSON nem tags.",
+        });
+        continue;
+      }
+
+      replyText = isRateLimit
+        ? "Oi, to com uma lentidão técnica aqui do meu lado 😅 Pode me chamar de novo em uns 15 min? Prometo que respondo rápido."
+        : "Opa, tive um probleminha aqui 😅 pode repetir, por favor?";
+      break;
+    }
+    const msg = choice.message;
+    const toolCalls = (
+      msg as { tool_calls?: Array<{ id: string; function: { name: string; arguments: string } }> }
+    ).tool_calls;
+
+    if (toolCalls && toolCalls.length > 0) {
+      messages.push({ role: "assistant", content: msg.content ?? "" } as ChatMessage);
+
+      for (const tc of toolCalls) {
+        const name = tc.function.name;
+        let args: Record<string, unknown> = {};
+        try {
+          args = JSON.parse(tc.function.arguments || "{}");
+        } catch {
+          args = {};
+        }
+        let toolResult = "ok";
+
+        if (name === "save_slots") {
+          const cleaned = cleanSlotsPayload(args);
+          if (Object.keys(cleaned).length === 0) {
+            toolResult =
+              "no_slots_extracted — você chamou save_slots sem valores válidos. NÃO chame essa tool de novo sem dados concretos; responda ao lead em texto.";
+          } else {
+            workingSlots = mergeSlots(workingSlots, cleaned);
+            workingState = autoAdvance(workingState, workingSlots);
+            toolResult = `slots_saved:${JSON.stringify(workingSlots)} state:${workingState}`;
+          }
+        } else if (name === "advance_state") {
+          const to = args.to as LeadState;
+          if (to) workingState = to;
+          toolResult = `state:${workingState}`;
+        } else if (name === "consultar_parcela") {
+          const valor = Number(args.valor_carta);
+          const argTipo = args.tipo as PricingTipo | undefined;
+          const tipo: PricingTipo | undefined =
+            argTipo ??
+            (workingSlots.interesse === "auto"
+              ? "auto"
+              : workingSlots.interesse === "imovel"
+                ? "imovel"
+                : undefined);
+          const result = lookupPricing(valor, tipo);
+          if (result.ok) {
+            // RETORNO QUALITATIVO — Stella NÃO deve citar números ao lead.
+            toolResult =
+              `pricing_check: faixa de R$ ${valor.toLocaleString("pt-BR")} (${result.row.tipo}) CABE no perfil. ` +
+              `REGRA: NÃO mencione valor de parcela ao lead. Apenas confirme qualitativamente ` +
+              `(ex.: "cabe bem", "é uma faixa comum", "o Juan trabalha bastante nesse range") ` +
+              `e CONDUZA pro agendamento se já tiver as 2 perguntas BANT mínimas.`;
+          } else if (result.reason === "fora_da_tabela") {
+            // valor muito baixo OU muito alto
+            const muitoBaixo = valor < 60_000;
+            toolResult = muitoBaixo
+              ? `pricing_check: R$ ${valor.toLocaleString("pt-BR")} ESTÁ ABAIXO da faixa típica. ` +
+                `Auto novo hoje começa em ~R$ 80k. Não confirme essa faixa baixa. ` +
+                `Pergunte o modelo/perfil de carro e ajude o lead a calibrar pra cima (popular: 80-110k, médio: 110-180k, SUV: 180k+).`
+              : `pricing_check: R$ ${valor.toLocaleString("pt-BR")} está fora da tabela mas pode estar dentro do escopo. ` +
+                `Não confirme valor; pergunte se faz sentido o range e direciona pro Juan validar.`;
+          } else {
+            toolResult = `pricing_invalido (${result.reason}) — peça o valor da carta novamente em R$.`;
+          }
+        } else if (name === "request_handoff") {
+          closedByHandoff = true;
+          closedReason = "handoff";
+          const motivo = String(args.motivo ?? "handoff solicitado");
+          await notifyJuan({ ...lead, state: "HANDOFF", slots: workingSlots }, motivo);
+          await pauseAi(waId);
+          // resposta determinística — não deixa a LLM continuar gerando
+          replyText =
+            (msg.content && sanitizeReply(msg.content).clean) ||
+            "Beleza! Vou chamar o Juan agora pra falar com você. Assim que ele puder, te responde por aqui mesmo 🙌";
+          break;
+        } else if (name === "close_conversation") {
+          const reason = args.reason === "postponed" ? "postponed" : "not_interested";
+          closedReason = reason;
+          replyText =
+            (msg.content && sanitizeReply(msg.content).clean) ||
+            (reason === "postponed"
+              ? "Tranquilo! Fico no aguardo. Quando quiser, só me chamar aqui que a gente retoma 🙌"
+              : "Beleza, sem problema! Se mudar de ideia é só me chamar. Boa sorte 🙌");
+          break;
+        } else if (name === "propose_schedule") {
+          workingState = "S4_AGENDAMENTO";
+          const slots = await fetchAndCacheSlots(waId);
+          toolResult = `slots:${JSON.stringify(slots.map((s, i) => ({ i, label: s.label })))}`;
+          messages.push({ role: "tool", tool_call_id: tc.id, name, content: toolResult } as ChatMessage);
+          messages.push({
+            role: "system",
+            content:
+              `Agora ofereça os horários ao lead. Formato sugerido (mas adapte ao tom):\n\n` +
+              formatOffer(slots),
+          });
+          continue;
+        } else if (name === "confirm_schedule") {
+          const idx = Number(args.slot_index ?? -1);
+          const channel = args.channel === "video" ? "video" : "ligacao";
+          const leadForConfirm: LeadRow = {
+            ...lead,
+            slots: workingSlots,
+            nome: workingSlots.nome ?? lead.nome,
+          };
+          const pick = await confirmSlot(leadForConfirm, idx, channel);
+          if (pick) {
+            workingState = "S5_CONFIRMADO";
+            closedReason = "scheduled";
+            const channelLabel = channel === "video" ? "vídeo chamada 📹" : "ligação 📞";
+            toolResult = `confirmed:${pick.label} channel:${channel}`;
+            messages.push({ role: "tool", tool_call_id: tc.id, name, content: toolResult } as ChatMessage);
+            messages.push({
+              role: "system",
+              content: `Confirme ao lead que está marcado para ${pick.label} via ${channelLabel}, e diga que o Juan chama no horário.`,
+            });
+            continue;
+          }
+          const offered = await getOfferedSlots(waId);
+          toolResult = `invalid_index:available:${JSON.stringify(offered.map((s, i) => ({ i, label: s.label })))}`;
+        }
+
+        messages.push({ role: "tool", tool_call_id: tc.id, name, content: toolResult } as ChatMessage);
+      }
+      // se alguma tool terminou a conversa (handoff/close), já setamos replyText — sai do loop
+      if (replyText) break;
+      continue;
+    }
+
+    const rawContent = (msg.content ?? "").trim();
+    const { clean, calls } = sanitizeReply(rawContent);
+
+    // aplica efeitos de tool calls que vieram como texto
+    if (calls.length > 0) {
+      logger.warn({ waId, count: calls.length, names: calls.map((c) => c.name) }, "sanitize: extracted inline tool calls");
+      const sideEffects = await applyExtractedCalls(calls, workingSlots, workingState, lead, waId);
+      workingSlots = sideEffects.slots;
+      workingState = sideEffects.state;
+      if (sideEffects.closedReason && !closedReason) closedReason = sideEffects.closedReason;
+      if (sideEffects.handoff) closedByHandoff = true;
+    }
+
+    replyText = clean || null;
+
+    // se o modelo emitiu só tool calls como texto (sem conteúdo limpo),
+    // pede uma nova resposta natural sem tools
+    if (!replyText && calls.length > 0) {
+      messages.push({ role: "assistant", content: rawContent } as ChatMessage);
+      messages.push({
+        role: "system",
+        content: "Agora responda ao lead em linguagem natural, em português, 1-3 linhas. NÃO use tags <function>, NÃO escreva JSON. Apenas o texto que o lead vai ler.",
+      });
+      const retry = await chat({ model: "main", messages, temperature: 0.4, maxTokens: 300 });
+      const retryText = (retry.message.content ?? "").trim();
+      replyText = sanitizeReply(retryText).clean || null;
+    }
+
+    break;
+  }
+
+  // se esgotou o loop sem texto, manda um fallback pra não deixar o lead sem resposta
+  if (!replyText) {
+    logger.warn({ waId, state: workingState }, "fsm: no reply produced — using fallback");
+    replyText = "Deixa eu só organizar aqui — pode me contar um pouquinho mais do que você busca?";
+  }
+
+  workingState = autoAdvance(workingState, workingSlots);
+
+  await updateLead(waId, {
+    state: workingState,
+    slots: workingSlots,
+    nome: workingSlots.nome ?? lead.nome ?? null,
+  });
+
+  if (replyText) {
+    // o log no DB (uma linha por chunk) e markLastActivity são feitos pelo worker
+    // depois de enviar via Evolution. Aqui só guardamos no histórico do Redis pra LLM
+    // ver o texto completo no próximo turno.
+    await pushHistory(waId, "assistant", replyText);
+  }
+
+  if (closedReason) {
+    await closeConversation(waId, closedReason);
+  }
+
+  return { replyText, newState: workingState, closedReason, closedByHandoff };
+}

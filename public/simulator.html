@@ -1,0 +1,344 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+<meta charset="UTF-8" />
+<title>Simulador WhatsApp — IA Juan</title>
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<style>
+  :root {
+    --bg: #0b141a;
+    --panel: #111b21;
+    --panel2: #202c33;
+    --border: #222d34;
+    --text: #e9edef;
+    --muted: #8696a0;
+    --green: #00a884;
+    --bubble-in: #202c33;
+    --bubble-out: #005c4b;
+    --danger: #e05555;
+    --warn: #f0b429;
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; margin: 0; font-family: -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif; background: var(--bg); color: var(--text); }
+  .app { display: grid; grid-template-columns: 340px 1fr; height: 100vh; }
+  .sidebar { background: var(--panel); border-right: 1px solid var(--border); display: flex; flex-direction: column; }
+  .sidebar-header { padding: 14px 16px; background: var(--panel2); display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid var(--border); }
+  .sidebar-header h1 { font-size: 15px; margin: 0; letter-spacing: .2px; }
+  .new-btn { background: var(--green); color: #fff; border: 0; padding: 6px 12px; border-radius: 16px; font-size: 13px; cursor: pointer; }
+  .lead-list { overflow-y: auto; flex: 1; }
+  .lead-item { padding: 12px 14px; border-bottom: 1px solid var(--border); cursor: pointer; display: flex; gap: 10px; align-items: center; }
+  .lead-item:hover { background: var(--panel2); }
+  .lead-item.active { background: var(--panel2); }
+  .avatar { width: 40px; height: 40px; border-radius: 50%; background: #374248; display: flex; align-items: center; justify-content: center; font-weight: 600; color: var(--text); font-size: 14px; flex-shrink: 0; }
+  .lead-main { flex: 1; min-width: 0; }
+  .lead-name { font-size: 14px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: flex; align-items: center; gap: 6px; }
+  .lead-sub { font-size: 12px; color: var(--muted); margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .status-pill { font-size: 10px; padding: 2px 6px; border-radius: 10px; text-transform: uppercase; letter-spacing: .5px; }
+  .status-open { background: #0b4335; color: #4ed9a9; }
+  .status-closed { background: #3a1f20; color: var(--danger); }
+  .chat { display: flex; flex-direction: column; background: #0b141a; background-image: linear-gradient(rgba(0,0,0,.5), rgba(0,0,0,.5)), url('data:image/svg+xml;utf8,<svg xmlns=%22http://www.w3.org/2000/svg%22 width=%2260%22 height=%2260%22><rect fill=%22%230b141a%22 width=%2260%22 height=%2260%22/></svg>'); }
+  .chat-header { background: var(--panel2); padding: 10px 16px; border-bottom: 1px solid var(--border); display: flex; align-items: center; gap: 12px; }
+  .chat-header .meta { flex: 1; min-width: 0; }
+  .chat-header h2 { margin: 0; font-size: 15px; }
+  .chat-header .state { font-size: 11px; color: var(--muted); margin-top: 2px; }
+  .chat-actions { display: flex; gap: 6px; }
+  .btn { background: var(--panel); color: var(--text); border: 1px solid var(--border); padding: 5px 10px; border-radius: 6px; font-size: 12px; cursor: pointer; }
+  .btn:hover { background: #2a3942; }
+  .btn.danger { color: var(--danger); border-color: #4a2a2c; }
+  .btn.warn { color: var(--warn); border-color: #4a3c1f; }
+  .messages { flex: 1; overflow-y: auto; padding: 16px 8%; display: flex; flex-direction: column; gap: 4px; }
+  .bubble { max-width: 65%; padding: 8px 10px 6px; border-radius: 8px; font-size: 14.2px; line-height: 1.35; position: relative; word-wrap: break-word; white-space: pre-wrap; }
+  .bubble .ts { font-size: 10.5px; color: rgba(255,255,255,.45); margin-top: 2px; text-align: right; }
+  /* simulador = você é o LEAD. Suas msgs (direction=in no DB) à direita em verde; IA à esquerda em cinza, como WhatsApp. */
+  .bubble.in  { background: var(--bubble-out); align-self: flex-end;   border-top-right-radius: 2px; }
+  .bubble.out { background: var(--bubble-in);  align-self: flex-start; border-top-left-radius: 2px; }
+  .composer { background: var(--panel2); padding: 10px 16px; display: flex; gap: 10px; align-items: center; border-top: 1px solid var(--border); }
+  .composer textarea { flex: 1; background: var(--panel); border: 0; border-radius: 8px; padding: 10px 12px; color: var(--text); resize: none; font-family: inherit; font-size: 14px; outline: none; }
+  .composer button { background: var(--green); border: 0; color: #fff; border-radius: 50%; width: 42px; height: 42px; cursor: pointer; font-size: 18px; }
+  .composer button:disabled { opacity: .5; cursor: not-allowed; }
+  .empty { flex: 1; display: flex; align-items: center; justify-content: center; color: var(--muted); text-align: center; padding: 40px; }
+  .empty h2 { color: var(--text); margin: 0 0 8px; font-weight: 500; }
+  .slots-panel { background: var(--panel2); border-top: 1px solid var(--border); padding: 10px 16px; font-size: 12px; color: var(--muted); }
+  .slots-panel strong { color: var(--text); }
+  .modal-bg { position: fixed; inset: 0; background: rgba(0,0,0,.6); display: none; align-items: center; justify-content: center; z-index: 10; }
+  .modal-bg.open { display: flex; }
+  .modal { background: var(--panel); padding: 20px; border-radius: 10px; width: 320px; border: 1px solid var(--border); }
+  .modal h3 { margin: 0 0 12px; font-size: 15px; }
+  .modal input { width: 100%; padding: 8px 10px; background: var(--panel2); border: 1px solid var(--border); border-radius: 6px; color: var(--text); margin-bottom: 12px; font-size: 14px; }
+  .modal .actions { display: flex; gap: 8px; justify-content: flex-end; }
+  .toast { position: fixed; bottom: 20px; right: 20px; background: var(--panel2); border: 1px solid var(--border); color: var(--text); padding: 10px 14px; border-radius: 6px; font-size: 13px; z-index: 20; display: none; }
+  .toast.show { display: block; }
+</style>
+</head>
+<body>
+<div class="app">
+  <aside class="sidebar">
+    <div class="sidebar-header">
+      <h1>IA Juan — Simulador</h1>
+      <button class="new-btn" onclick="openNew()">+ Novo</button>
+    </div>
+    <div class="lead-list" id="leadList"></div>
+  </aside>
+
+  <main class="chat" id="chat">
+    <div class="empty">
+      <div>
+        <h2>Simulador de WhatsApp</h2>
+        <p>Selecione um lead na lateral ou crie um novo para testar a IA.</p>
+      </div>
+    </div>
+  </main>
+</div>
+
+<div class="modal-bg" id="modal">
+  <div class="modal">
+    <h3>Novo lead</h3>
+    <label style="font-size:12px;color:var(--muted)">Número (E.164, só dígitos)</label>
+    <input id="mWaId" placeholder="5551999990000" />
+    <label style="font-size:12px;color:var(--muted)">Nome (opcional)</label>
+    <input id="mName" placeholder="Fulano" />
+    <div class="actions">
+      <button class="btn" onclick="closeNew()">Cancelar</button>
+      <button class="btn" style="background:var(--green);color:#fff;border:0" onclick="createLead()">Criar</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+  let currentWaId = null;
+  let lastMessageId = 0;
+  let pollTimer = null;
+
+  async function api(method, path, body) {
+    const res = await fetch(path, {
+      method,
+      headers: { "Content-Type": "application/json" },
+      body: body ? JSON.stringify(body) : undefined,
+    });
+    if (!res.ok) throw new Error(await res.text());
+    return res.json();
+  }
+
+  function toast(msg) {
+    const el = document.getElementById("toast");
+    el.textContent = msg;
+    el.classList.add("show");
+    setTimeout(() => el.classList.remove("show"), 2200);
+  }
+
+  function initials(s) {
+    if (!s) return "?";
+    const parts = String(s).trim().split(/\s+/);
+    return (parts[0][0] + (parts[1]?.[0] ?? "")).toUpperCase();
+  }
+
+  function formatTime(iso) {
+    const d = new Date(iso);
+    return d.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
+  }
+
+  async function loadLeads() {
+    const leads = await api("GET", "/sim/leads");
+    const list = document.getElementById("leadList");
+    list.innerHTML = "";
+    if (!leads.length) {
+      list.innerHTML = `<div style="padding:24px;color:var(--muted);font-size:13px;text-align:center">Nenhum lead ainda.<br/>Clique em + Novo.</div>`;
+      return;
+    }
+    for (const l of leads) {
+      const item = document.createElement("div");
+      item.className = "lead-item" + (l.wa_id === currentWaId ? " active" : "");
+      const pill = `<span class="status-pill ${l.status === 'open' ? 'status-open' : 'status-closed'}">${l.status}${l.closed_reason ? ' · ' + l.closed_reason : ''}</span>`;
+      item.innerHTML = `
+        <div class="avatar">${initials(l.nome || l.wa_id)}</div>
+        <div class="lead-main">
+          <div class="lead-name">${l.nome ?? l.wa_id} ${pill}</div>
+          <div class="lead-sub">${l.state} · ${l.wa_id}</div>
+        </div>`;
+      item.onclick = () => selectLead(l.wa_id);
+      list.appendChild(item);
+    }
+  }
+
+  async function selectLead(waId) {
+    currentWaId = waId;
+    lastMessageId = 0;
+    renderChat(null);
+    await loadLeads();
+    await refresh();
+    if (pollTimer) clearInterval(pollTimer);
+    pollTimer = setInterval(refresh, 1200);
+  }
+
+  function renderChat(data) {
+    const chat = document.getElementById("chat");
+    if (!data) {
+      chat.innerHTML = `<div class="empty"><div><h2>Carregando…</h2></div></div>`;
+      return;
+    }
+    const { lead, messages } = data;
+    if (!lead) {
+      chat.innerHTML = `<div class="empty"><div><h2>Lead não encontrado</h2></div></div>`;
+      return;
+    }
+    const slotsPretty = Object.entries(lead.slots || {})
+      .map(([k, v]) => `<strong>${k}</strong>: ${v}`).join(" · ") || "(sem slots ainda)";
+    chat.innerHTML = `
+      <div class="chat-header">
+        <div class="avatar">${initials(lead.nome || lead.wa_id)}</div>
+        <div class="meta">
+          <h2>${lead.nome ?? lead.wa_id}</h2>
+          <div class="state">${lead.state} · status: ${lead.status}${lead.closed_reason ? ' ('+lead.closed_reason+')' : ''}</div>
+        </div>
+        <div class="chat-actions">
+          <button class="btn warn" onclick="triggerFollowup(1)" title="Forçar follow-up 15min">FU1</button>
+          <button class="btn warn" onclick="triggerFollowup(2)" title="Forçar follow-up 24h">FU2</button>
+          <button class="btn" onclick="reopen()">Reabrir</button>
+          <button class="btn danger" onclick="resetLead()">Reset</button>
+        </div>
+      </div>
+      <div class="messages" id="messages"></div>
+      <div class="slots-panel">${slotsPretty}</div>
+      <div class="composer">
+        <textarea id="input" rows="1" placeholder="Mensagem" onkeydown="onKey(event)"></textarea>
+        <button onclick="sendMsg()" id="sendBtn">➤</button>
+      </div>
+    `;
+    const msgs = document.getElementById("messages");
+    for (const m of messages) {
+      lastMessageId = Math.max(lastMessageId, m.id);
+      addBubble(msgs, m);
+    }
+    msgs.scrollTop = msgs.scrollHeight;
+  }
+
+  function addBubble(container, m) {
+    const el = document.createElement("div");
+    el.className = "bubble " + (m.direction === "in" ? "in" : "out");
+    const text = document.createElement("div");
+    text.textContent = m.content;
+    const ts = document.createElement("div");
+    ts.className = "ts";
+    ts.textContent = formatTime(m.created_at);
+    el.appendChild(text);
+    el.appendChild(ts);
+    container.appendChild(el);
+  }
+
+  async function refresh() {
+    if (!currentWaId) return;
+    try {
+      const data = await api("GET", `/sim/messages?waId=${currentWaId}&sinceId=${lastMessageId}`);
+      if (!data.lead) return;
+
+      const chat = document.getElementById("chat");
+      if (!chat.querySelector(".chat-header")) {
+        renderChat(data);
+        return;
+      }
+
+      // atualiza header dinâmico
+      const state = chat.querySelector(".chat-header .state");
+      if (state) state.textContent = `${data.lead.state} · status: ${data.lead.status}${data.lead.closed_reason ? ' ('+data.lead.closed_reason+')' : ''}`;
+      const slotsPanel = chat.querySelector(".slots-panel");
+      if (slotsPanel) {
+        const slotsPretty = Object.entries(data.lead.slots || {})
+          .map(([k, v]) => `<strong>${k}</strong>: ${v}`).join(" · ") || "(sem slots ainda)";
+        slotsPanel.innerHTML = slotsPretty;
+      }
+
+      const msgs = document.getElementById("messages");
+      if (!msgs) return;
+      let added = false;
+      for (const m of data.messages) {
+        if (m.id > lastMessageId) {
+          lastMessageId = m.id;
+          addBubble(msgs, m);
+          added = true;
+        }
+      }
+      if (added) msgs.scrollTop = msgs.scrollHeight;
+    } catch (err) {
+      console.error(err);
+    }
+  }
+
+  async function sendMsg() {
+    const input = document.getElementById("input");
+    const text = input.value.trim();
+    if (!text || !currentWaId) return;
+    const btn = document.getElementById("sendBtn");
+    btn.disabled = true;
+    input.value = "";
+    try {
+      const res = await api("POST", "/sim/inbound", { waId: currentWaId, text });
+      // a msg já foi persistida; renderiza com o id real e avança o cursor pra evitar duplicar no poll
+      if (res && res.messageId) {
+        const msgs = document.getElementById("messages");
+        lastMessageId = Math.max(lastMessageId, res.messageId);
+        addBubble(msgs, {
+          id: res.messageId,
+          direction: "in",
+          content: text,
+          created_at: res.created_at ?? new Date().toISOString(),
+        });
+        msgs.scrollTop = msgs.scrollHeight;
+      }
+    } catch (err) {
+      toast("Erro ao enviar: " + err.message);
+    } finally {
+      btn.disabled = false;
+      input.focus();
+    }
+  }
+
+  function onKey(e) {
+    if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendMsg(); }
+  }
+
+  async function resetLead() {
+    if (!currentWaId) return;
+    if (!confirm("Apagar esta conversa inteira e recomeçar?")) return;
+    await api("POST", "/sim/reset", { waId: currentWaId });
+    toast("Lead resetado");
+    currentWaId = null;
+    if (pollTimer) clearInterval(pollTimer);
+    document.getElementById("chat").innerHTML = `<div class="empty"><div><h2>Selecione um lead</h2></div></div>`;
+    await loadLeads();
+  }
+
+  async function reopen() {
+    if (!currentWaId) return;
+    await api("POST", "/sim/reopen", { waId: currentWaId });
+    toast("Conversa reaberta");
+    await refresh();
+    await loadLeads();
+  }
+
+  async function triggerFollowup(stage) {
+    if (!currentWaId) return;
+    await api("POST", "/sim/trigger-followup", { waId: currentWaId, stage });
+    toast(`Follow-up ${stage} disparado (~1s)`);
+  }
+
+  function openNew() { document.getElementById("modal").classList.add("open"); document.getElementById("mWaId").focus(); }
+  function closeNew() { document.getElementById("modal").classList.remove("open"); }
+
+  async function createLead() {
+    const waId = document.getElementById("mWaId").value.replace(/\D/g, "");
+    const name = document.getElementById("mName").value.trim() || null;
+    if (!waId) { toast("Informe o número"); return; }
+    closeNew();
+    // cria um lead mandando uma primeira mensagem "Oi" simulando chegada
+    await api("POST", "/sim/inbound", { waId, text: "Oi", pushName: name });
+    await loadLeads();
+    await selectLead(waId);
+  }
+
+  loadLeads();
+  setInterval(loadLeads, 3000);
+</script>
+</body>
+</html>

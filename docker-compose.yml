@@ -1,0 +1,141 @@
+services:
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    ports:
+      - "6380:6379"
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ia
+      POSTGRES_PASSWORD: ia
+      POSTGRES_DB: ia_juan
+    ports:
+      - "5434:5432"
+    volumes:
+      - pg-data:/var/lib/postgresql/data
+      - ./docker/postgres-init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ia -d ia_juan"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  evolution:
+    # Nota: a imagem `atendai/evolution-api` ficou desatualizada e não publica a tag v2.3.7 no Docker Hub.
+    # Usamos o repositório mantido `evoapicloud/evolution-api`, que contém a tag v2.3.7 compatível com este projeto.
+    image: evoapicloud/evolution-api:v2.3.7
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    environment:
+      - SERVER_URL=http://localhost:8080
+      - AUTHENTICATION_API_KEY=${EVOLUTION_API_KEY}
+      - AUTHENTICATION_EXPOSE_IN_FETCH_INSTANCES=true
+      - LANGUAGE=pt-BR
+      - CONFIG_SESSION_PHONE_CLIENT=Juan Monteiro
+      - CONFIG_SESSION_PHONE_NAME=Chrome
+
+      - DATABASE_ENABLED=true
+      - DATABASE_PROVIDER=postgresql
+      - DATABASE_CONNECTION_URI=postgresql://ia:ia@postgres:5432/evolution
+      - DATABASE_CONNECTION_CLIENT_NAME=evolution_exchange
+      - DATABASE_SAVE_DATA_INSTANCE=true
+      - DATABASE_SAVE_DATA_NEW_MESSAGE=true
+      - DATABASE_SAVE_MESSAGE_UPDATE=true
+      - DATABASE_SAVE_DATA_CONTACTS=true
+      - DATABASE_SAVE_DATA_CHATS=true
+      - DATABASE_SAVE_DATA_LABELS=true
+      - DATABASE_SAVE_DATA_HISTORIC=true
+
+      - CACHE_REDIS_ENABLED=true
+      - CACHE_REDIS_URI=redis://redis:6379/1
+      - CACHE_REDIS_PREFIX_KEY=evolution
+      - CACHE_REDIS_SAVE_INSTANCES=false
+      - CACHE_LOCAL_ENABLED=false
+
+      # Webhook global — Evolution chama o nosso app automaticamente para toda instância.
+      - WEBHOOK_GLOBAL_ENABLED=true
+      - WEBHOOK_GLOBAL_URL=http://app:3000/webhook/evolution?token=${EVOLUTION_WEBHOOK_TOKEN}
+      - WEBHOOK_GLOBAL_WEBHOOK_BY_EVENTS=false
+      - WEBHOOK_EVENTS_MESSAGES_UPSERT=true
+      - WEBHOOK_EVENTS_CONNECTION_UPDATE=true
+
+      - LOG_LEVEL=ERROR,WARN,INFO
+      - LOG_COLOR=true
+      - DEL_INSTANCE=false
+      - QRCODE_LIMIT=30
+    volumes:
+      - evolution-data:/evolution/instances
+    depends_on:
+      redis:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+
+  app:
+    build: .
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    env_file:
+      - .env
+    environment:
+      # sobrescreve as URLs do .env (que apontam pra localhost) para os service names da rede do compose
+      - NODE_ENV=${NODE_ENV:-development}
+      - REDIS_URL=redis://redis:6379
+      - DATABASE_URL=postgres://ia:ia@postgres:5432/ia_juan
+      # se EVOLUTION_BASE_URL_DOCKER for definida no .env, usa ela (caso externa);
+      # senão usa o nome do serviço evolution interno do compose.
+      - EVOLUTION_BASE_URL=${EVOLUTION_BASE_URL_DOCKER:-http://evolution:8080}
+      - PUBLIC_BASE_URL=http://localhost:3000
+      - SIMULATOR_MODE=${SIMULATOR_MODE:-true}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      # bind-mounts para dev com hot-reload (tsx watch detecta as mudanças)
+      - ./src:/app/src
+      - ./public:/app/public
+      - ./migrations:/app/migrations
+      - ./scripts:/app/scripts
+    depends_on:
+      redis:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+      evolution:
+        condition: service_started
+
+  web:
+    build: ./web
+    restart: unless-stopped
+    ports:
+      - "3002:3001"
+    environment:
+      - NODE_ENV=${NODE_ENV:-development}
+      - DATABASE_URL=postgres://ia:ia@postgres:5432/ia_juan
+      - FASTIFY_BASE_URL=http://app:3000
+      - ADMIN_API_TOKEN=${ADMIN_API_TOKEN:-change-me-admin-token}
+    volumes:
+      - ./web/app:/app/app
+      - ./web/components:/app/components
+      - ./web/lib:/app/lib
+    depends_on:
+      postgres:
+        condition: service_healthy
+      app:
+        condition: service_started
+
+volumes:
+  redis-data:
+  pg-data:
+  evolution-data:
