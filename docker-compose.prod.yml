@@ -1,0 +1,160 @@
+# docker-compose.prod.yml — versão pra deploy em Coolify (ou qualquer servidor)
+#
+# Diferenças do docker-compose.yml (dev):
+#   - sem bind-mounts (código vem do build da imagem)
+#   - sem env_file (.env não está no repo; envs vêm do painel Coolify)
+#   - `expose:` em vez de `ports:` (Coolify proxia via seu reverse-proxy interno)
+#   - NODE_ENV=production em tudo
+#
+# Coolify aponta `Docker Compose Location` pra este arquivo (em vez de docker-compose.yml).
+
+services:
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ia
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-ia}
+      POSTGRES_DB: ia_juan
+    volumes:
+      - pg-data:/var/lib/postgresql/data
+      - ./docker/postgres-init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ia -d ia_juan"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  evolution:
+    image: evoapicloud/evolution-api:v2.3.7
+    restart: unless-stopped
+    expose:
+      - "8080"
+    environment:
+      - SERVER_URL=${EVOLUTION_PUBLIC_URL}
+      - AUTHENTICATION_API_KEY=${EVOLUTION_API_KEY}
+      - AUTHENTICATION_EXPOSE_IN_FETCH_INSTANCES=true
+      - LANGUAGE=pt-BR
+      - CONFIG_SESSION_PHONE_CLIENT=Juan Monteiro
+      - CONFIG_SESSION_PHONE_NAME=Chrome
+      - DATABASE_ENABLED=true
+      - DATABASE_PROVIDER=postgresql
+      - DATABASE_CONNECTION_URI=postgresql://ia:${POSTGRES_PASSWORD:-ia}@postgres:5432/evolution
+      - DATABASE_CONNECTION_CLIENT_NAME=evolution_exchange
+      - DATABASE_SAVE_DATA_INSTANCE=true
+      - DATABASE_SAVE_DATA_NEW_MESSAGE=true
+      - DATABASE_SAVE_MESSAGE_UPDATE=true
+      - DATABASE_SAVE_DATA_CONTACTS=true
+      - DATABASE_SAVE_DATA_CHATS=true
+      - DATABASE_SAVE_DATA_LABELS=true
+      - DATABASE_SAVE_DATA_HISTORIC=true
+      - CACHE_REDIS_ENABLED=true
+      - CACHE_REDIS_URI=redis://redis:6379/1
+      - CACHE_REDIS_PREFIX_KEY=evolution
+      - CACHE_REDIS_SAVE_INSTANCES=false
+      - CACHE_LOCAL_ENABLED=false
+      - WEBHOOK_GLOBAL_ENABLED=true
+      - WEBHOOK_GLOBAL_URL=http://app:3000/webhook/evolution?token=${EVOLUTION_WEBHOOK_TOKEN}
+      - WEBHOOK_GLOBAL_WEBHOOK_BY_EVENTS=false
+      - WEBHOOK_EVENTS_MESSAGES_UPSERT=true
+      - WEBHOOK_EVENTS_CONNECTION_UPDATE=true
+      - LOG_LEVEL=ERROR,WARN,INFO
+      - LOG_COLOR=true
+      - DEL_INSTANCE=false
+      - QRCODE_LIMIT=30
+    volumes:
+      - evolution-data:/evolution/instances
+    depends_on:
+      redis:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+
+  app:
+    build: .
+    restart: unless-stopped
+    expose:
+      - "3000"
+    environment:
+      - NODE_ENV=production
+      - LOG_LEVEL=info
+      - PORT=3000
+      - PUBLIC_BASE_URL=${PUBLIC_BASE_URL}
+
+      - REDIS_URL=redis://redis:6379
+      - DATABASE_URL=postgres://ia:${POSTGRES_PASSWORD:-ia}@postgres:5432/ia_juan
+
+      - EVOLUTION_BASE_URL=http://evolution:8080
+      - EVOLUTION_API_KEY=${EVOLUTION_API_KEY}
+      - EVOLUTION_INSTANCE=${EVOLUTION_INSTANCE:-juan}
+      - EVOLUTION_WEBHOOK_TOKEN=${EVOLUTION_WEBHOOK_TOKEN}
+
+      - GROQ_API_KEY=${GROQ_API_KEY}
+      - GROQ_MODEL_MAIN=${GROQ_MODEL_MAIN:-llama-3.3-70b-versatile}
+      - GROQ_MODEL_FAST=${GROQ_MODEL_FAST:-llama-3.1-8b-instant}
+      - GROQ_MODEL_AUDIO=${GROQ_MODEL_AUDIO:-whisper-large-v3}
+
+      - ADMIN_API_TOKEN=${ADMIN_API_TOKEN}
+
+      - JUAN_NAME=${JUAN_NAME:-Juan Monteiro}
+      - JUAN_WHATSAPP_E164=${JUAN_WHATSAPP_E164}
+      - TIMEZONE=${TIMEZONE:-America/Sao_Paulo}
+      - WORK_START_HOUR=${WORK_START_HOUR:-9}
+      - WORK_END_HOUR=${WORK_END_HOUR:-19}
+      - MEETING_DURATION_MIN=${MEETING_DURATION_MIN:-15}
+
+      - DEBOUNCE_MS=${DEBOUNCE_MS:-5000}
+      - LEAD_STATE_TTL_SECONDS=${LEAD_STATE_TTL_SECONDS:-604800}
+      - FOLLOWUP_1_MS=${FOLLOWUP_1_MS:-900000}
+      - FOLLOWUP_2_MS=${FOLLOWUP_2_MS:-86400000}
+      - FOLLOWUP_CLOSE_MS=${FOLLOWUP_CLOSE_MS:-86400000}
+
+      - SIMULATOR_MODE=${SIMULATOR_MODE:-false}
+
+      - GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID:-}
+      - GOOGLE_CLIENT_SECRET=${GOOGLE_CLIENT_SECRET:-}
+      - GOOGLE_REDIRECT_URI=${GOOGLE_REDIRECT_URI:-}
+      - GOOGLE_CALENDAR_ID=${GOOGLE_CALENDAR_ID:-primary}
+      - GOOGLE_TOKENS_PATH=/app/.tokens/google.json
+    volumes:
+      - tokens-data:/app/.tokens
+    depends_on:
+      redis:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+      evolution:
+        condition: service_started
+
+  web:
+    build: ./web
+    restart: unless-stopped
+    expose:
+      - "3001"
+    environment:
+      - NODE_ENV=production
+      - DATABASE_URL=postgres://ia:${POSTGRES_PASSWORD:-ia}@postgres:5432/ia_juan
+      - FASTIFY_BASE_URL=http://app:3000
+      - ADMIN_API_TOKEN=${ADMIN_API_TOKEN}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      app:
+        condition: service_started
+
+volumes:
+  redis-data:
+  pg-data:
+  evolution-data:
+  tokens-data:
