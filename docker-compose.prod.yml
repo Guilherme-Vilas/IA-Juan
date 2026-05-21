@@ -37,9 +37,9 @@ services:
       retries: 10
 
   evolution:
-    # v2.2.3 — versão anterior estável.
-    # v2.3.7 estava recebendo MESSAGES_UPSERT mas não disparando webhook em prod (Coolify).
-    image: evoapicloud/evolution-api:v2.2.3
+    # v2.3.7 — versão atual estável (Baileys novo).
+    # v2.2.3 não conectava (Baileys muito antigo, WhatsApp rejeita protocolo).
+    image: evoapicloud/evolution-api:v2.3.7
     restart: unless-stopped
     expose:
       - "8080"
