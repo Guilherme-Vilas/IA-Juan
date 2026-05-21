@@ -37,7 +37,9 @@ services:
       retries: 10
 
   evolution:
-    image: evoapicloud/evolution-api:v2.3.7
+    # v2.2.3 — versão anterior estável.
+    # v2.3.7 estava recebendo MESSAGES_UPSERT mas não disparando webhook em prod (Coolify).
+    image: evoapicloud/evolution-api:v2.2.3
     restart: unless-stopped
     expose:
       - "8080"
