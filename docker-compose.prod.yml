@@ -72,8 +72,10 @@ services:
       - WEBHOOK_GLOBAL_WEBHOOK_BY_EVENTS=false
       - WEBHOOK_EVENTS_MESSAGES_UPSERT=true
       - WEBHOOK_EVENTS_CONNECTION_UPDATE=true
-      - LOG_LEVEL=ERROR,WARN,INFO
+      # log verboso temporário para debug de webhook não disparando
+      - LOG_LEVEL=ERROR,WARN,INFO,DEBUG,VERBOSE,WEBHOOKS,WEBSOCKET
       - LOG_COLOR=true
+      - LOG_BAILEYS=info
       - DEL_INSTANCE=false
       - QRCODE_LIMIT=30
     volumes:
