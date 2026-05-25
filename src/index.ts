@@ -23,11 +23,9 @@ async function main() {
     "api up",
   );
 
-  if (config.NODE_ENV !== "production") {
-    await import("./workers/inbound.worker.js");
-    await import("./workers/followup.worker.js");
-    logger.info("workers attached (dev mode)");
-  }
+  await import("./workers/inbound.worker.js");
+  await import("./workers/followup.worker.js");
+  logger.info("workers attached");
 
   const shutdown = async (sig: string) => {
     logger.info({ sig }, "shutting down");
