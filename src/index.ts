@@ -4,12 +4,14 @@ import { logger } from "./core/logger.js";
 import { registerRoutes } from "./api/webhook.js";
 import { registerSimulatorRoutes } from "./api/simulator.js";
 import { registerAdminRoutes } from "./api/admin.js";
+import { registerProspectRoutes } from "./api/prospect.js";
 
 async function main() {
   const app = Fastify({ logger: false, bodyLimit: 10 * 1024 * 1024 });
   await registerRoutes(app);
   await registerSimulatorRoutes(app);
   await registerAdminRoutes(app);
+  await registerProspectRoutes(app);
 
   await app.listen({ host: "0.0.0.0", port: config.PORT });
   logger.info(
@@ -25,6 +27,7 @@ async function main() {
 
   await import("./workers/inbound.worker.js");
   await import("./workers/followup.worker.js");
+  await import("./workers/prospect.worker.js");
   logger.info("workers attached");
 
   const shutdown = async (sig: string) => {

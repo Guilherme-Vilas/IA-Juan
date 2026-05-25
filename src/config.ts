@@ -50,6 +50,11 @@ const schema = z.object({
   FOLLOWUP_CLOSE_MS: z.coerce.number().default(24 * 60 * 60 * 1000),
 
   SIMULATOR_MODE: booleanFromEnv.default(false),
+
+  // Prospect module
+  PROSPECT_TICK_MS: z.coerce.number().default(5 * 60 * 1000), // 5min
+  PROSPECT_JITTER_MS: z.coerce.number().default(10 * 60 * 1000), // ±10min
+  PROSPECT_DEFAULT_RATE_PER_DAY: z.coerce.number().default(30),
 });
 
 export const config = schema.parse(process.env);

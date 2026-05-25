@@ -11,8 +11,18 @@ export type FollowupJob = {
   stage: 1 | 2 | 3;
 };
 
+export type ProspectSendJob = {
+  campaignId: number;
+  prospectId: number;
+};
+
 export const inboundQueue = new Queue<InboundJob>("inbound", bullConnection);
 export const followupQueue = new Queue<FollowupJob>("followup", bullConnection);
+export const prospectSendQueue = new Queue<ProspectSendJob>("prospect-send", bullConnection);
+
+export function prospectSendJobId(prospectId: number): string {
+  return `prospect-send-${prospectId}`;
+}
 
 export function debounceJobId(waId: string): string {
   return `debounce-${waId}`;

@@ -48,6 +48,38 @@ export async function sendPresence(waId: string, presence: "composing" | "paused
   }
 }
 
+// Checa se um ou mais números têm WhatsApp.
+// Endpoint Evolution v2.x: POST /chat/whatsappNumbers/{instance}
+// Body: { numbers: ["5511999998888", ...] }
+// Resposta: Array<{ exists: boolean, jid: string, number: string }>
+export async function checkWhatsappNumbers(
+  numbers: string[],
+): Promise<Map<string, boolean>> {
+  if (numbers.length === 0) return new Map();
+  if (config.SIMULATOR_MODE) {
+    return new Map(numbers.map((n) => [n, true]));
+  }
+  try {
+    const res = await client.post<Array<{ exists?: boolean; number?: string }>>(
+      `/chat/whatsappNumbers/${INSTANCE}`,
+      { numbers },
+    );
+    const map = new Map<string, boolean>();
+    for (const item of res.data ?? []) {
+      if (item.number) map.set(item.number, !!item.exists);
+    }
+    // garante chave pra cada input mesmo se Evolution não devolveu
+    for (const n of numbers) {
+      if (!map.has(n)) map.set(n, false);
+    }
+    return map;
+  } catch (err) {
+    logger.error({ err }, "evolution.checkWhatsappNumbers failed");
+    // se falhar, assume que todos existem pra não bloquear envio (a falha vem no send)
+    return new Map(numbers.map((n) => [n, true]));
+  }
+}
+
 export async function downloadMedia(messageId: string): Promise<Buffer> {
   const res = await client.post(
     `/chat/getBase64FromMediaMessage/${INSTANCE}`,
