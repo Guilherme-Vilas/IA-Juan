@@ -2,11 +2,12 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Users, Calendar, BarChart3, Settings, Inbox } from "lucide-react";
+import { Users, Calendar, BarChart3, Settings, Inbox, Send } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const nav = [
   { href: "/leads", label: "Leads", icon: Users },
+  { href: "/prospect", label: "Prospecção", icon: Send },
   { href: "/agenda", label: "Agenda", icon: Calendar },
   { href: "/metrics", label: "Métricas", icon: BarChart3 },
   { href: "/inbox", label: "Inbox", icon: Inbox },

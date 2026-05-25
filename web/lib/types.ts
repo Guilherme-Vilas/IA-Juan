@@ -107,3 +107,93 @@ export const REASON_LABELS: Record<ClosedReason, string> = {
   handoff: "Handoff humano",
   no_response: "Sem resposta",
 };
+
+// ===== Prospect =====
+export type Channel = "whatsapp" | "linkedin";
+export type CampaignStatus = "draft" | "running" | "paused" | "done";
+export type ProspectStatus =
+  | "pending"
+  | "queued"
+  | "sent"
+  | "replied"
+  | "failed"
+  | "skipped"
+  | "ready_for_manual";
+
+export type Campaign = {
+  id: number;
+  name: string;
+  channel: Channel;
+  template_text: string;
+  ai_refine: boolean;
+  tone: string;
+  status: CampaignStatus;
+  rate_per_day: number;
+  work_hours_only: boolean;
+  created_at: string;
+  updated_at: string;
+};
+
+export type Prospect = {
+  id: number;
+  campaign_id: number;
+  external_id: string;
+  nome: string | null;
+  empresa: string | null;
+  cargo: string | null;
+  raw_csv: Record<string, unknown>;
+  composed_message: string | null;
+  status: ProspectStatus;
+  skip_reason: string | null;
+  sent_at: string | null;
+  replied_at: string | null;
+  lead_id: number | null;
+  error_msg: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type CampaignMetrics = {
+  total: number;
+  pending: number;
+  queued: number;
+  sent: number;
+  replied: number;
+  failed: number;
+  skipped: number;
+  ready_for_manual: number;
+};
+
+export const CAMPAIGN_STATUS_LABELS: Record<CampaignStatus, string> = {
+  draft: "Rascunho",
+  running: "Rodando",
+  paused: "Pausada",
+  done: "Concluída",
+};
+
+export const CAMPAIGN_STATUS_COLORS: Record<CampaignStatus, string> = {
+  draft: "bg-slate-400",
+  running: "bg-emerald-500",
+  paused: "bg-amber-500",
+  done: "bg-blue-500",
+};
+
+export const PROSPECT_STATUS_LABELS: Record<ProspectStatus, string> = {
+  pending: "Pendente",
+  queued: "Na fila",
+  sent: "Enviada",
+  replied: "Respondeu",
+  failed: "Falhou",
+  skipped: "Pulado",
+  ready_for_manual: "Envio manual",
+};
+
+export const PROSPECT_STATUS_COLORS: Record<ProspectStatus, string> = {
+  pending: "bg-slate-100 text-slate-700",
+  queued: "bg-indigo-100 text-indigo-700",
+  sent: "bg-blue-100 text-blue-700",
+  replied: "bg-emerald-100 text-emerald-700",
+  failed: "bg-red-100 text-red-700",
+  skipped: "bg-amber-100 text-amber-700",
+  ready_for_manual: "bg-violet-100 text-violet-700",
+};
