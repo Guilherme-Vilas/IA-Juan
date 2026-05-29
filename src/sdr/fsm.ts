@@ -104,6 +104,28 @@ function normalizeInteresse(v: unknown): Slots["interesse"] | undefined {
   return "outro";
 }
 
+function normalizeFinalidade(v: unknown): Slots["finalidade"] | undefined {
+  if (typeof v !== "string") return undefined;
+  const s = v.trim().toLowerCase();
+  if (!s) return undefined;
+  if (s.includes("morar") || s.includes("moradia") || s.includes("residenc")) return "moradia";
+  if (s.includes("aluga") || s.includes("locac") || s.includes("renda")) return "renda_locacao";
+  if (s.includes("invest") || s.includes("flip") || s.includes("revenda")) return "investimento";
+  if (["moradia", "investimento", "renda_locacao"].includes(s)) return s as Slots["finalidade"];
+  return undefined;
+}
+
+function normalizeTipoImovel(v: unknown): Slots["tipo_imovel"] | undefined {
+  if (typeof v !== "string") return undefined;
+  const s = v.trim().toLowerCase();
+  if (!s) return undefined;
+  if (s.includes("lanc") || s.includes("planta") || s.includes("novo")) return "lancamento";
+  if (s.includes("usado") || s.includes("revenda") || s.includes("seminovo")) return "usado";
+  if (s.includes("comerc") || s.includes("sala") || s.includes("loja")) return "comercial";
+  if (["lancamento", "usado", "comercial"].includes(s)) return s as Slots["tipo_imovel"];
+  return undefined;
+}
+
 function cleanSlotsPayload(raw: Record<string, unknown>): Partial<Slots> {
   const out: Partial<Slots> = {};
   if (typeof raw.nome === "string" && raw.nome.trim()) out.nome = raw.nome.trim();
@@ -122,6 +144,20 @@ function cleanSlotsPayload(raw: Record<string, unknown>): Partial<Slots> {
   if (typeof raw.decisao_com_conjuge === "boolean")
     out.decisao_com_conjuge = raw.decisao_com_conjuge;
   if (typeof raw.mora_exterior === "boolean") out.mora_exterior = raw.mora_exterior;
+  // ===== Imobiliarios (Facilita/Apolar) =====
+  if (typeof raw.entrada_disponivel === "number" && raw.entrada_disponivel >= 0)
+    out.entrada_disponivel = raw.entrada_disponivel;
+  if (typeof raw.usa_fgts === "boolean") out.usa_fgts = raw.usa_fgts;
+  const fin = normalizeFinalidade(raw.finalidade);
+  if (fin) out.finalidade = fin;
+  const tip = normalizeTipoImovel(raw.tipo_imovel);
+  if (tip) out.tipo_imovel = tip;
+  if (typeof raw.regiao_interesse === "string" && raw.regiao_interesse.trim())
+    out.regiao_interesse = raw.regiao_interesse.trim();
+  if (typeof raw.pretende_financiar === "boolean")
+    out.pretende_financiar = raw.pretende_financiar;
+  if (typeof raw.ja_visitou_imovel === "boolean") out.ja_visitou_imovel = raw.ja_visitou_imovel;
+
   if (typeof raw.observacoes === "string" && raw.observacoes.trim())
     out.observacoes = raw.observacoes.trim();
   return out;
@@ -169,14 +205,18 @@ async function applyExtractedCalls(
 
 function autoAdvance(state: LeadState, slots: Slots): LeadState {
   if (state === "S0_ABERTURA" && slots.nome) return "S1_DESCOBERTA";
-  if (state === "S1_DESCOBERTA" && slots.interesse) return "S2_QUALIFICACAO";
-  if (
-    state === "S2_QUALIFICACAO" &&
-    slots.capacidade_mensal &&
-    slots.valor_bem &&
-    slots.intencao_lance !== undefined
-  ) {
-    return "S3_EDUCACAO";
+  if (state === "S1_DESCOBERTA" && (slots.interesse || slots.finalidade || slots.tipo_imovel))
+    return "S2_QUALIFICACAO";
+  if (state === "S2_QUALIFICACAO") {
+    // Regra Juan/consorcio: capacidade + valor_bem + intencao_lance
+    const juanReady =
+      !!slots.capacidade_mensal && !!slots.valor_bem && slots.intencao_lance !== undefined;
+    // Regra Facilita/imoveis: renda (capacidade_mensal) + entrada + tipo_imovel
+    const imovelReady =
+      !!slots.capacidade_mensal &&
+      slots.entrada_disponivel !== undefined &&
+      !!slots.tipo_imovel;
+    if (juanReady || imovelReady) return "S3_EDUCACAO";
   }
   return state;
 }

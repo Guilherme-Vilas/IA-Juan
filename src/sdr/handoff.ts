@@ -7,9 +7,19 @@ function formatSlots(slots: LeadRow["slots"]): string {
   const lines: string[] = [];
   if (slots.nome) lines.push(`• Nome: ${slots.nome}`);
   if (slots.interesse) lines.push(`• Interesse: ${slots.interesse}`);
-  if (slots.valor_bem) lines.push(`• Valor do bem: R$ ${slots.valor_bem.toLocaleString("pt-BR")}`);
+  if (slots.tipo_imovel) lines.push(`• Tipo de imóvel: ${slots.tipo_imovel}`);
+  if (slots.finalidade) lines.push(`• Finalidade: ${slots.finalidade}`);
+  if (slots.regiao_interesse) lines.push(`• Região: ${slots.regiao_interesse}`);
+  if (slots.valor_bem) lines.push(`• Valor do imóvel/carta: R$ ${slots.valor_bem.toLocaleString("pt-BR")}`);
   if (slots.capacidade_mensal)
-    lines.push(`• Capacidade mensal: R$ ${slots.capacidade_mensal.toLocaleString("pt-BR")}`);
+    lines.push(`• Renda/capacidade mensal: R$ ${slots.capacidade_mensal.toLocaleString("pt-BR")}`);
+  if (slots.entrada_disponivel !== undefined)
+    lines.push(`• Entrada disponível: R$ ${slots.entrada_disponivel.toLocaleString("pt-BR")}`);
+  if (slots.usa_fgts !== undefined) lines.push(`• Usa FGTS: ${slots.usa_fgts ? "sim" : "não"}`);
+  if (slots.pretende_financiar !== undefined)
+    lines.push(`• Financia: ${slots.pretende_financiar ? "sim" : "não (recursos próprios)"}`);
+  if (slots.ja_visitou_imovel !== undefined)
+    lines.push(`• Já visitou imóvel: ${slots.ja_visitou_imovel ? "sim" : "não"}`);
   if (slots.prazo_meses) lines.push(`• Prazo: ${slots.prazo_meses} meses`);
   if (slots.intencao_lance !== undefined)
     lines.push(`• Lance: ${slots.intencao_lance ? "sim" : "não/não sabe"}`);

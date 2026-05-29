@@ -41,6 +41,14 @@ export type Slots = {
   fecha_se_proposta_boa?: boolean;
   decisao_com_conjuge?: boolean;
   mora_exterior?: boolean;
+  // facilita / apolar
+  entrada_disponivel?: number;
+  usa_fgts?: boolean;
+  finalidade?: "moradia" | "investimento" | "renda_locacao";
+  tipo_imovel?: "lancamento" | "usado" | "comercial";
+  regiao_interesse?: string;
+  pretende_financiar?: boolean;
+  ja_visitou_imovel?: boolean;
 };
 
 export type Lead = {

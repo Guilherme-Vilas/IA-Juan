@@ -24,17 +24,25 @@ export type MeetingChannel = "ligacao" | "video";
 export type Slots = {
   nome?: string;
   interesse?: "imovel" | "auto" | "investimento" | "outro";
-  capacidade_mensal?: number;
-  valor_bem?: number;
+  capacidade_mensal?: number;       // renda/parcela suportada por mes (R$)
+  valor_bem?: number;               // valor do bem/carta/imovel (R$)
   prazo_meses?: number;
   intencao_lance?: boolean;
   observacoes?: string;
   // qualificação Juan (BANT)
-  sabe_consorcio?: boolean;         // tem clareza do que é consórcio?
-  prazo_decisao?: string;           // "proximos_meses" | "sem_pressa" | "indefinido" | livre
-  fecha_se_proposta_boa?: boolean;  // commitment se proposta for adequada?
-  decisao_com_conjuge?: boolean;    // decide sozinho (false) ou com parceiro (true)?
-  mora_exterior?: boolean;          // brasileiro que mora fora
+  sabe_consorcio?: boolean;
+  prazo_decisao?: string;
+  fecha_se_proposta_boa?: boolean;
+  decisao_com_conjuge?: boolean;
+  mora_exterior?: boolean;
+  // slots imobiliarios (tenant facilita / apolar)
+  entrada_disponivel?: number;      // R$ disponiveis pra entrada
+  usa_fgts?: boolean;
+  finalidade?: "moradia" | "investimento" | "renda_locacao";
+  tipo_imovel?: "lancamento" | "usado" | "comercial";
+  regiao_interesse?: string;        // bairro/cidade preferida
+  pretende_financiar?: boolean;
+  ja_visitou_imovel?: boolean;
 };
 
 export type LeadRow = {

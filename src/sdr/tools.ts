@@ -51,7 +51,45 @@ export const SDR_TOOLS: ToolDef[] = [
             type: "boolean",
             description: "true se o lead é brasileiro morando no exterior",
           },
-          observacoes: { type: "string", description: "Observação livre relevante para o Juan" },
+          // ===== Imobiliario (tenant Facilita/Apolar) =====
+          entrada_disponivel: {
+            type: "number",
+            description:
+              "R$ disponíveis pra entrada do imóvel (FGTS + recursos próprios + saldo etc). Só envie se o lead disser um valor concreto.",
+          },
+          usa_fgts: {
+            type: "boolean",
+            description: "Vai usar saldo do FGTS na entrada/lance (true) ou não (false).",
+          },
+          finalidade: {
+            type: "string",
+            enum: ["moradia", "investimento", "renda_locacao"],
+            description:
+              "Pra que vai usar o imóvel: 'moradia' (vai morar), 'investimento' (compra pra ganho de capital/revenda), 'renda_locacao' (compra pra alugar).",
+          },
+          tipo_imovel: {
+            type: "string",
+            enum: ["lancamento", "usado", "comercial"],
+            description:
+              "Tipo do imóvel: 'lancamento' (novo/planta), 'usado' (revenda), 'comercial' (sala/loja).",
+          },
+          regiao_interesse: {
+            type: "string",
+            description: "Bairro ou região que o lead quer (texto livre curto).",
+          },
+          pretende_financiar: {
+            type: "boolean",
+            description:
+              "true se pretende financiar parte do imóvel; false se vai à vista/recursos próprios.",
+          },
+          ja_visitou_imovel: {
+            type: "boolean",
+            description: "true se o lead já visitou esse imóvel ou outros similares com algum corretor.",
+          },
+          observacoes: {
+            type: "string",
+            description: "Observação livre relevante (anotação pro corretor).",
+          },
         },
         additionalProperties: false,
       },
