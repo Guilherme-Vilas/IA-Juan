@@ -1,4 +1,5 @@
 import type { CampaignRow, ProspectRow } from "../repo.js";
+import type { TenantRow } from "../../core/tenants.js";
 
 export type SendResult =
   | { status: "sent" }
@@ -7,5 +8,10 @@ export type SendResult =
   | { status: "failed"; error: string };
 
 export interface Sender {
-  send: (campaign: CampaignRow, prospect: ProspectRow, text: string) => Promise<SendResult>;
+  send: (
+    campaign: CampaignRow,
+    prospect: ProspectRow,
+    text: string,
+    tenant: TenantRow,
+  ) => Promise<SendResult>;
 }

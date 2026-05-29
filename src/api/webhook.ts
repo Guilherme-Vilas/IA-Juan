@@ -8,6 +8,7 @@ import { inboundQueue, debounceJobId } from "../workers/queues.js";
 import { logMessage, markLastActivity, upsertLead } from "../core/db.js";
 import { authUrl, saveTokensFromCode } from "../core/calendar.js";
 import { handleProspectReply } from "../prospect/handoff.js";
+import { getTenantByInstance } from "../core/tenants.js";
 
 export async function registerRoutes(app: FastifyInstance) {
   app.get("/health", async () => ({ ok: true }));
@@ -22,21 +23,31 @@ export async function registerRoutes(app: FastifyInstance) {
     if (!parsed) return reply.send({ ignored: "unparseable" });
     if (parsed.fromMe) return reply.send({ ignored: "fromMe" });
 
+    const tenant = await getTenantByInstance(parsed.instance);
+    if (!tenant) {
+      logger.warn({ instance: parsed.instance, waId: parsed.waId }, "webhook: unknown instance");
+      return reply.send({ ignored: "unknown_instance" });
+    }
+    if (!tenant.active) {
+      logger.debug({ tenant: tenant.slug, waId: parsed.waId }, "webhook: tenant inactive — ignoring");
+      return reply.send({ ignored: "tenant_inactive" });
+    }
+
     let text = parsed.text ?? "";
 
     if (parsed.type === "audio" && parsed.audioMessageId) {
       try {
-        const buf = await downloadMedia(parsed.audioMessageId);
+        const buf = await downloadMedia(tenant, parsed.audioMessageId);
         text = await transcribeAudio(buf, `${parsed.audioMessageId}.ogg`);
-        logger.info({ waId: parsed.waId, chars: text.length }, "audio transcribed");
+        logger.info({ tenant: tenant.slug, waId: parsed.waId, chars: text.length }, "audio transcribed");
       } catch (err) {
-        logger.error({ err, waId: parsed.waId }, "audio download/transcribe failed");
+        logger.error({ err, tenant: tenant.slug, waId: parsed.waId }, "audio download/transcribe failed");
         text = "[lead enviou um áudio que não consegui ouvir]";
       }
     }
 
     if (parsed.type === "other") {
-      logger.info({ waId: parsed.waId }, "unsupported message type");
+      logger.info({ tenant: tenant.slug, waId: parsed.waId }, "unsupported message type");
       return reply.send({ ignored: "unsupported" });
     }
 
@@ -44,37 +55,38 @@ export async function registerRoutes(app: FastifyInstance) {
 
     // Se essa primeira resposta vem de um prospect (cold outreach), faz o handoff:
     // vincula o prospect a um lead, copia nome/empresa, marca source='campaign:N'.
-    // Operação é idempotente (não duplica se já handed-off).
-    await handleProspectReply(parsed.waId, parsed.pushName ?? null).catch((err) =>
-      logger.warn({ err, waId: parsed.waId }, "prospect handoff failed (continuing as normal lead)"),
+    await handleProspectReply(tenant, parsed.waId, parsed.pushName ?? null).catch((err) =>
+      logger.warn({ err, tenant: tenant.slug, waId: parsed.waId }, "prospect handoff failed (continuing as normal lead)"),
     );
 
-    const lead = await upsertLead(parsed.waId, { nome: parsed.pushName ?? null });
+    const lead = await upsertLead(tenant.id, parsed.waId, { nome: parsed.pushName ?? null });
     await logMessage(lead.id, "in", "user", text);
-    await markLastActivity(parsed.waId, "user");
+    await markLastActivity(tenant.id, parsed.waId, "user");
 
-    await appendBuffer(parsed.waId, {
+    await appendBuffer(tenant.slug, parsed.waId, {
       ts: parsed.timestamp,
       text,
       messageId: parsed.messageId,
     });
 
-    await inboundQueue.add(
-      "process",
-      { waId: parsed.waId, pushName: parsed.pushName },
-      {
-        jobId: debounceJobId(parsed.waId),
-        delay: config.DEBOUNCE_MS,
-        removeOnComplete: true,
-        removeOnFail: 50,
-      },
-    ).catch(async (err) => {
-      if (String(err?.message ?? "").includes("already exists")) {
-        logger.debug({ waId: parsed.waId }, "debounce: job already pending, buffer extended");
-        return;
-      }
-      throw err;
-    });
+    await inboundQueue
+      .add(
+        "process",
+        { tenantId: tenant.id, waId: parsed.waId, pushName: parsed.pushName },
+        {
+          jobId: debounceJobId(tenant.id, parsed.waId),
+          delay: config.DEBOUNCE_MS,
+          removeOnComplete: true,
+          removeOnFail: 50,
+        },
+      )
+      .catch(async (err) => {
+        if (String(err?.message ?? "").includes("already exists")) {
+          logger.debug({ tenant: tenant.slug, waId: parsed.waId }, "debounce: job already pending, buffer extended");
+          return;
+        }
+        throw err;
+      });
 
     return reply.send({ ok: true });
   });

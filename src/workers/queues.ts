@@ -2,11 +2,13 @@ import { Queue } from "bullmq";
 import { bullConnection } from "../core/redis.js";
 
 export type InboundJob = {
+  tenantId: number;
   waId: string;
   pushName?: string;
 };
 
 export type FollowupJob = {
+  tenantId: number;
   waId: string;
   stage: 1 | 2 | 3;
 };
@@ -20,21 +22,21 @@ export const inboundQueue = new Queue<InboundJob>("inbound", bullConnection);
 export const followupQueue = new Queue<FollowupJob>("followup", bullConnection);
 export const prospectSendQueue = new Queue<ProspectSendJob>("prospect-send", bullConnection);
 
+export function debounceJobId(tenantId: number, waId: string): string {
+  return `debounce-${tenantId}-${waId}`;
+}
+
+export function followupJobId(tenantId: number, waId: string, stage: 1 | 2 | 3): string {
+  return `followup-${tenantId}-${stage}-${waId}`;
+}
+
 export function prospectSendJobId(prospectId: number): string {
   return `prospect-send-${prospectId}`;
 }
 
-export function debounceJobId(waId: string): string {
-  return `debounce-${waId}`;
-}
-
-export function followupJobId(waId: string, stage: 1 | 2 | 3): string {
-  return `followup-${stage}-${waId}`;
-}
-
-export async function cancelFollowups(waId: string) {
+export async function cancelFollowups(tenantId: number, waId: string) {
   for (const stage of [1, 2, 3] as const) {
-    const id = followupJobId(waId, stage);
+    const id = followupJobId(tenantId, waId, stage);
     const job = await followupQueue.getJob(id);
     if (job) {
       try {
@@ -46,8 +48,13 @@ export async function cancelFollowups(waId: string) {
   }
 }
 
-export async function scheduleFollowup(waId: string, stage: 1 | 2 | 3, delayMs: number) {
-  const id = followupJobId(waId, stage);
+export async function scheduleFollowup(
+  tenantId: number,
+  waId: string,
+  stage: 1 | 2 | 3,
+  delayMs: number,
+) {
+  const id = followupJobId(tenantId, waId, stage);
   const existing = await followupQueue.getJob(id);
   if (existing) {
     try {
@@ -58,7 +65,7 @@ export async function scheduleFollowup(waId: string, stage: 1 | 2 | 3, delayMs: 
   }
   await followupQueue.add(
     "tick",
-    { waId, stage },
+    { tenantId, waId, stage },
     {
       jobId: id,
       delay: delayMs,

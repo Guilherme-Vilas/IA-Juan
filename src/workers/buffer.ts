@@ -7,14 +7,18 @@ type BufferedItem = {
   messageId: string;
 };
 
-export async function appendBuffer(waId: string, item: BufferedItem): Promise<void> {
-  const k = keys.debounceBuffer(waId);
+export async function appendBuffer(
+  tenantSlug: string,
+  waId: string,
+  item: BufferedItem,
+): Promise<void> {
+  const k = keys.debounceBuffer(tenantSlug, waId);
   await redis.rpush(k, JSON.stringify(item));
   await redis.expire(k, Math.ceil(config.DEBOUNCE_MS / 1000) + 60);
 }
 
-export async function drainBuffer(waId: string): Promise<string> {
-  const k = keys.debounceBuffer(waId);
+export async function drainBuffer(tenantSlug: string, waId: string): Promise<string> {
+  const k = keys.debounceBuffer(tenantSlug, waId);
   const items = await redis.lrange(k, 0, -1);
   await redis.del(k);
   if (!items.length) return "";

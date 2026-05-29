@@ -4,6 +4,7 @@ import { google, calendar_v3 } from "googleapis";
 import { DateTime, Interval } from "luxon";
 import { config } from "../config.js";
 import { logger } from "./logger.js";
+import type { TenantRow } from "./tenants.js";
 
 function makeOAuth2() {
   if (!config.GOOGLE_CLIENT_ID || !config.GOOGLE_CLIENT_SECRET || !config.GOOGLE_REDIRECT_URI) {
@@ -52,17 +53,16 @@ export function isConfigured(): boolean {
 export type Slot = { startISO: string; endISO: string; label: string };
 
 // Minutos "quebrados" para parecer uma agenda real, não automação de massa.
-// Distribuídos pra dar variedade visual entre dias e horários.
 const BROKEN_MINUTES = [15, 25, 40, 50, 35, 20, 45];
 
-export async function listFreeSlots(daysAhead = 4): Promise<Slot[]> {
+export async function listFreeSlots(tenant: TenantRow, daysAhead = 4): Promise<Slot[]> {
   const cal = getClient();
-  const tz = config.TIMEZONE;
-  const duration = config.MEETING_DURATION_MIN;
+  const tz = tenant.timezone;
+  const duration = tenant.meeting_duration_min;
 
   const now = DateTime.now().setZone(tz).plus({ hours: 2 });
   const windowEnd = now.plus({ days: daysAhead }).set({
-    hour: config.WORK_END_HOUR,
+    hour: tenant.work_end_hour,
     minute: 0,
     second: 0,
     millisecond: 0,
@@ -91,15 +91,13 @@ export async function listFreeSlots(daysAhead = 4): Promise<Slot[]> {
     }
   }
 
-  // Gera candidatos com minutos quebrados, 1-2 slots por hora útil
   const candidates: DateTime[] = [];
   let day = now.startOf("day");
   let mIdx = 0;
   while (day < windowEnd) {
-    const weekday = day.weekday; // 1-7 (seg-dom)
+    const weekday = day.weekday;
     if (weekday <= 5) {
-      // só dias úteis
-      for (let h = config.WORK_START_HOUR; h < config.WORK_END_HOUR; h += 2) {
+      for (let h = tenant.work_start_hour; h < tenant.work_end_hour; h += 2) {
         const minute = BROKEN_MINUTES[mIdx % BROKEN_MINUTES.length]!;
         mIdx++;
         const candidate = day.set({ hour: h, minute, second: 0, millisecond: 0 });
@@ -125,14 +123,17 @@ export async function listFreeSlots(daysAhead = 4): Promise<Slot[]> {
   return slots;
 }
 
-export async function createEvent(opts: {
-  startISO: string;
-  endISO: string;
-  leadName: string;
-  leadWhatsapp: string;
-  summary?: string;
-  description?: string;
-}): Promise<string> {
+export async function createEvent(
+  tenant: TenantRow,
+  opts: {
+    startISO: string;
+    endISO: string;
+    leadName: string;
+    leadWhatsapp: string;
+    summary?: string;
+    description?: string;
+  },
+): Promise<string> {
   const cal = getClient();
   if (!cal) {
     logger.warn("calendar not configured; returning fake event id");
@@ -141,10 +142,10 @@ export async function createEvent(opts: {
   const res = await cal.events.insert({
     calendarId: config.GOOGLE_CALENDAR_ID,
     requestBody: {
-      summary: opts.summary ?? `Call ${opts.leadName} — Consórcio`,
+      summary: opts.summary ?? `Call ${opts.leadName} — ${tenant.name}`,
       description: opts.description ?? `WhatsApp: ${opts.leadWhatsapp}`,
-      start: { dateTime: opts.startISO, timeZone: config.TIMEZONE },
-      end: { dateTime: opts.endISO, timeZone: config.TIMEZONE },
+      start: { dateTime: opts.startISO, timeZone: tenant.timezone },
+      end: { dateTime: opts.endISO, timeZone: tenant.timezone },
       reminders: { useDefault: true },
     },
   });

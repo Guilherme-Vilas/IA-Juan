@@ -1,7 +1,7 @@
-import { config } from "../config.js";
 import { sendText } from "../core/evolution.js";
 import { updateLead, type LeadRow, type MeetingChannel } from "../core/db.js";
 import { logger } from "../core/logger.js";
+import type { TenantRow } from "../core/tenants.js";
 
 function formatSlots(slots: LeadRow["slots"]): string {
   const lines: string[] = [];
@@ -25,40 +25,41 @@ function formatSlots(slots: LeadRow["slots"]): string {
   return lines.length ? lines.join("\n") : "(sem dados coletados)";
 }
 
-export async function notifyJuan(lead: LeadRow, motivo: string) {
+export async function notifyJuan(tenant: TenantRow, lead: LeadRow, motivo: string) {
   const text =
-    `🔔 *Handoff SDR*\n` +
+    `🔔 *Handoff SDR — ${tenant.name}*\n` +
     `Lead: ${lead.nome ?? "(sem nome)"} — wa.me/${lead.wa_id}\n` +
     `Motivo: ${motivo}\n\n` +
     formatSlots(lead.slots);
   try {
-    await sendText(config.JUAN_WHATSAPP_E164, text);
+    await sendText(tenant, tenant.owner_whatsapp_e164, text);
   } catch (err) {
-    logger.error({ err }, "notifyJuan failed");
+    logger.error({ err, tenant: tenant.slug }, "notifyJuan failed");
   }
 }
 
-export async function pauseAi(waId: string) {
+export async function pauseAi(tenant: TenantRow, waId: string) {
   // Marca como pausada (única coisa que silencia a IA) e move pra estado HANDOFF
-  // pra refletir no dashboard que o Juan tá no controle.
-  await updateLead(waId, { paused: true, state: "HANDOFF" });
+  // pra refletir no dashboard que o owner tá no controle.
+  await updateLead(tenant.id, waId, { paused: true, state: "HANDOFF" });
 }
 
 export async function notifyScheduled(
+  tenant: TenantRow,
   lead: LeadRow,
   whenLabel: string,
   channel: MeetingChannel = "ligacao",
 ) {
   const channelLabel = channel === "video" ? "📹 Vídeo chamada" : "📞 Ligação";
   const text =
-    `✅ *Agendamento confirmado*\n` +
+    `✅ *Agendamento confirmado — ${tenant.name}*\n` +
     `Lead: ${lead.nome ?? "(sem nome)"} — wa.me/${lead.wa_id}\n` +
     `Quando: ${whenLabel}\n` +
     `Canal: ${channelLabel}\n\n` +
     formatSlots(lead.slots);
   try {
-    await sendText(config.JUAN_WHATSAPP_E164, text);
+    await sendText(tenant, tenant.owner_whatsapp_e164, text);
   } catch (err) {
-    logger.error({ err }, "notifyScheduled failed");
+    logger.error({ err, tenant: tenant.slug }, "notifyScheduled failed");
   }
 }

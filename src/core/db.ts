@@ -39,6 +39,7 @@ export type Slots = {
 
 export type LeadRow = {
   id: number;
+  tenant_id: number;
   wa_id: string;
   nome: string | null;
   source: string | null;
@@ -54,34 +55,49 @@ export type LeadRow = {
   updated_at: Date;
 };
 
-export async function upsertLead(waId: string, patch: Partial<LeadRow> = {}): Promise<LeadRow> {
+export async function upsertLead(
+  tenantId: number,
+  waId: string,
+  patch: Partial<LeadRow> = {},
+): Promise<LeadRow> {
   const { rows } = await pool.query<LeadRow>(
-    `INSERT INTO leads (wa_id, nome, source, state, slots)
-     VALUES ($1, $2, $3, COALESCE($4, 'S0_ABERTURA'), COALESCE($5, '{}'::jsonb))
-     ON CONFLICT (wa_id) DO UPDATE SET
+    `INSERT INTO leads (tenant_id, wa_id, nome, source, state, slots)
+     VALUES ($1, $2, $3, $4, COALESCE($5, 'S0_ABERTURA'), COALESCE($6, '{}'::jsonb))
+     ON CONFLICT (tenant_id, wa_id) DO UPDATE SET
        nome   = COALESCE(EXCLUDED.nome, leads.nome),
        source = COALESCE(EXCLUDED.source, leads.source),
        updated_at = now()
      RETURNING *`,
-    [waId, patch.nome ?? null, patch.source ?? null, patch.state ?? null, patch.slots ?? null],
+    [
+      tenantId,
+      waId,
+      patch.nome ?? null,
+      patch.source ?? null,
+      patch.state ?? null,
+      patch.slots ?? null,
+    ],
   );
   return rows[0]!;
 }
 
-export async function getLead(waId: string): Promise<LeadRow | null> {
-  const { rows } = await pool.query<LeadRow>(`SELECT * FROM leads WHERE wa_id = $1`, [waId]);
+export async function getLead(tenantId: number, waId: string): Promise<LeadRow | null> {
+  const { rows } = await pool.query<LeadRow>(
+    `SELECT * FROM leads WHERE tenant_id = $1 AND wa_id = $2`,
+    [tenantId, waId],
+  );
   return rows[0] ?? null;
 }
 
-export async function listLeads(limit = 50): Promise<LeadRow[]> {
+export async function listLeads(tenantId: number, limit = 50): Promise<LeadRow[]> {
   const { rows } = await pool.query<LeadRow>(
-    `SELECT * FROM leads ORDER BY updated_at DESC LIMIT $1`,
-    [limit],
+    `SELECT * FROM leads WHERE tenant_id = $1 ORDER BY updated_at DESC LIMIT $2`,
+    [tenantId, limit],
   );
   return rows;
 }
 
 export async function updateLead(
+  tenantId: number,
   waId: string,
   patch: Partial<Pick<LeadRow, "state" | "slots" | "nome" | "paused">>,
 ) {
@@ -93,46 +109,47 @@ export async function updateLead(
     values.push(k === "slots" ? JSON.stringify(v) : v);
   }
   if (!fields.length) return;
-  values.push(waId);
+  values.push(tenantId, waId);
   await pool.query(
-    `UPDATE leads SET ${fields.join(", ")}, updated_at = now() WHERE wa_id = $${i}`,
+    `UPDATE leads SET ${fields.join(", ")}, updated_at = now() WHERE tenant_id = $${i++} AND wa_id = $${i}`,
     values,
   );
 }
 
 export async function markLastActivity(
+  tenantId: number,
   waId: string,
   who: "user" | "assistant",
   at: Date = new Date(),
 ) {
   const col = who === "user" ? "last_user_at" : "last_assistant_at";
   await pool.query(
-    `UPDATE leads SET ${col} = $1, updated_at = now() WHERE wa_id = $2`,
-    [at, waId],
+    `UPDATE leads SET ${col} = $1, updated_at = now() WHERE tenant_id = $2 AND wa_id = $3`,
+    [at, tenantId, waId],
   );
 }
 
-export async function closeConversation(waId: string, reason: ClosedReason) {
+export async function closeConversation(tenantId: number, waId: string, reason: ClosedReason) {
   await pool.query(
     `UPDATE leads
        SET status = 'closed',
            closed_reason = $1,
            closed_at = now(),
            updated_at = now()
-     WHERE wa_id = $2`,
-    [reason, waId],
+     WHERE tenant_id = $2 AND wa_id = $3`,
+    [reason, tenantId, waId],
   );
 }
 
-export async function reopenConversation(waId: string) {
+export async function reopenConversation(tenantId: number, waId: string) {
   await pool.query(
     `UPDATE leads
        SET status = 'open',
            closed_reason = NULL,
            closed_at = NULL,
            updated_at = now()
-     WHERE wa_id = $1`,
-    [waId],
+     WHERE tenant_id = $1 AND wa_id = $2`,
+    [tenantId, waId],
   );
 }
 
@@ -172,24 +189,28 @@ export async function listMessages(leadId: number, sinceId = 0, limit = 200): Pr
 }
 
 export async function recordAppointment(
+  tenantId: number,
   leadId: number,
   eventId: string,
   scheduledAt: Date,
   channel: MeetingChannel | null = null,
 ) {
   await pool.query(
-    `INSERT INTO appointments (lead_id, calendar_event_id, scheduled_at, status, meeting_channel)
-     VALUES ($1, $2, $3, 'scheduled', $4)`,
-    [leadId, eventId, scheduledAt, channel],
+    `INSERT INTO appointments (tenant_id, lead_id, calendar_event_id, scheduled_at, status, meeting_channel)
+     VALUES ($1, $2, $3, $4, 'scheduled', $5)`,
+    [tenantId, leadId, eventId, scheduledAt, channel],
   );
 }
 
-export async function resetLead(waId: string) {
-  const { rows } = await pool.query<{ id: number }>(`SELECT id FROM leads WHERE wa_id = $1`, [waId]);
+export async function resetLead(tenantId: number, waId: string) {
+  const { rows } = await pool.query<{ id: number }>(
+    `SELECT id FROM leads WHERE tenant_id = $1 AND wa_id = $2`,
+    [tenantId, waId],
+  );
   const id = rows[0]?.id;
   if (id) {
     await pool.query(`DELETE FROM messages WHERE lead_id = $1`, [id]);
     await pool.query(`DELETE FROM appointments WHERE lead_id = $1`, [id]);
   }
-  await pool.query(`DELETE FROM leads WHERE wa_id = $1`, [waId]);
+  await pool.query(`DELETE FROM leads WHERE tenant_id = $1 AND wa_id = $2`, [tenantId, waId]);
 }

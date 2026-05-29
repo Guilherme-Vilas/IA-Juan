@@ -13,6 +13,7 @@ export type ProspectStatus =
 
 export type CampaignRow = {
   id: number;
+  tenant_id: number;
   name: string;
   channel: Channel;
   template_text: string;
@@ -28,6 +29,7 @@ export type CampaignRow = {
 export type ProspectRow = {
   id: number;
   campaign_id: number;
+  tenant_id: number;
   external_id: string;
   nome: string | null;
   empresa: string | null;
@@ -53,6 +55,7 @@ export type ProspectInput = {
 };
 
 export async function createCampaign(input: {
+  tenant_id: number;
   name: string;
   channel: Channel;
   template_text: string;
@@ -62,10 +65,11 @@ export async function createCampaign(input: {
   work_hours_only?: boolean;
 }): Promise<CampaignRow> {
   const { rows } = await pool.query<CampaignRow>(
-    `INSERT INTO campaigns (name, channel, template_text, ai_refine, tone, rate_per_day, work_hours_only)
-     VALUES ($1,$2,$3,COALESCE($4,true),COALESCE($5,'semi-formal'),COALESCE($6,30),COALESCE($7,true))
+    `INSERT INTO campaigns (tenant_id, name, channel, template_text, ai_refine, tone, rate_per_day, work_hours_only)
+     VALUES ($1,$2,$3,$4,COALESCE($5,true),COALESCE($6,'semi-formal'),COALESCE($7,30),COALESCE($8,true))
      RETURNING *`,
     [
+      input.tenant_id,
       input.name,
       input.channel,
       input.template_text,
@@ -78,14 +82,32 @@ export async function createCampaign(input: {
   return rows[0]!;
 }
 
-export async function getCampaign(id: number): Promise<CampaignRow | null> {
+export async function getCampaign(tenantId: number, id: number): Promise<CampaignRow | null> {
+  const { rows } = await pool.query<CampaignRow>(
+    `SELECT * FROM campaigns WHERE id = $1 AND tenant_id = $2`,
+    [id, tenantId],
+  );
+  return rows[0] ?? null;
+}
+
+// Sem filtro de tenant — usado internamente por workers que recebem campaignId solto.
+export async function getCampaignById(id: number): Promise<CampaignRow | null> {
   const { rows } = await pool.query<CampaignRow>(`SELECT * FROM campaigns WHERE id = $1`, [id]);
   return rows[0] ?? null;
 }
 
-export async function listCampaigns(): Promise<CampaignRow[]> {
+export async function listCampaigns(tenantId: number): Promise<CampaignRow[]> {
   const { rows } = await pool.query<CampaignRow>(
-    `SELECT * FROM campaigns ORDER BY created_at DESC LIMIT 200`,
+    `SELECT * FROM campaigns WHERE tenant_id = $1 ORDER BY created_at DESC LIMIT 200`,
+    [tenantId],
+  );
+  return rows;
+}
+
+// Listagem global — usada pelo dispatcher tick que precisa varrer todas as campanhas em running.
+export async function listAllRunningCampaigns(): Promise<CampaignRow[]> {
+  const { rows } = await pool.query<CampaignRow>(
+    `SELECT * FROM campaigns WHERE status = 'running' ORDER BY tenant_id, id`,
   );
   return rows;
 }
@@ -121,6 +143,7 @@ export async function deleteCampaign(id: number): Promise<void> {
 }
 
 export async function insertProspects(
+  tenantId: number,
   campaignId: number,
   prospects: ProspectInput[],
 ): Promise<{ inserted: number; duplicates: number }> {
@@ -131,10 +154,11 @@ export async function insertProspects(
 
   for (const p of prospects) {
     const res = await pool.query(
-      `INSERT INTO prospects (campaign_id, external_id, nome, empresa, cargo, raw_csv)
-       VALUES ($1,$2,$3,$4,$5,$6)
+      `INSERT INTO prospects (tenant_id, campaign_id, external_id, nome, empresa, cargo, raw_csv)
+       VALUES ($1,$2,$3,$4,$5,$6,$7)
        ON CONFLICT (campaign_id, external_id) DO NOTHING`,
       [
+        tenantId,
         campaignId,
         p.external_id,
         p.nome ?? null,
@@ -172,10 +196,18 @@ export async function getProspect(id: number): Promise<ProspectRow | null> {
   return rows[0] ?? null;
 }
 
-export async function findProspectByExternalId(externalId: string): Promise<ProspectRow | null> {
+// Busca prospect ativo POR tenant+external — pra handoff de resposta.
+export async function findProspectByExternalId(
+  tenantId: number,
+  externalId: string,
+): Promise<ProspectRow | null> {
   const { rows } = await pool.query<ProspectRow>(
-    `SELECT * FROM prospects WHERE external_id = $1 AND status IN ('sent','ready_for_manual','queued') ORDER BY sent_at DESC NULLS LAST LIMIT 1`,
-    [externalId],
+    `SELECT * FROM prospects
+       WHERE tenant_id = $1 AND external_id = $2
+         AND status IN ('sent','ready_for_manual','queued')
+       ORDER BY sent_at DESC NULLS LAST
+       LIMIT 1`,
+    [tenantId, externalId],
   );
   return rows[0] ?? null;
 }

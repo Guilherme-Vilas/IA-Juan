@@ -1,13 +1,11 @@
 import { chat, type ChatMessage } from "../core/llm.js";
 import { SDR_TOOLS } from "./tools.js";
 import { sanitizeReply, type ExtractedCall } from "./sanitize.js";
-import { prompts, contextFor } from "./prompts/loader.js";
+import { promptsFor, contextFor, type TenantPrompts } from "./prompts/loader.js";
 import { lookupPricing, type PricingTipo } from "./pricing.js";
 import {
   closeConversation,
   getLead,
-  logMessage,
-  markLastActivity,
   reopenConversation,
   updateLead,
   upsertLead,
@@ -21,18 +19,19 @@ import { config } from "../config.js";
 import { logger } from "../core/logger.js";
 import { notifyJuan, pauseAi } from "./handoff.js";
 import { confirmSlot, fetchAndCacheSlots, formatOffer, getOfferedSlots } from "./scheduler.js";
+import type { TenantRow } from "../core/tenants.js";
 
 const HISTORY_LIMIT = 10;
 
-async function pushHistory(waId: string, role: "user" | "assistant", content: string) {
-  const k = keys.leadHistory(waId);
+async function pushHistory(tenantSlug: string, waId: string, role: "user" | "assistant", content: string) {
+  const k = keys.leadHistory(tenantSlug, waId);
   await redis.rpush(k, JSON.stringify({ role, content }));
   await redis.ltrim(k, -HISTORY_LIMIT, -1);
   await redis.expire(k, config.LEAD_STATE_TTL_SECONDS);
 }
 
-async function loadHistory(waId: string): Promise<ChatMessage[]> {
-  const items = await redis.lrange(keys.leadHistory(waId), 0, -1);
+async function loadHistory(tenantSlug: string, waId: string): Promise<ChatMessage[]> {
+  const items = await redis.lrange(keys.leadHistory(tenantSlug, waId), 0, -1);
   return items
     .map((x) => {
       try {
@@ -44,8 +43,12 @@ async function loadHistory(waId: string): Promise<ChatMessage[]> {
     .filter((x): x is ChatMessage => !!x);
 }
 
-function buildSystemPrompt(lead: LeadRow, reopenedFrom?: ClosedReason | null): string {
-  const extra = contextFor(lead.state);
+function buildSystemPrompt(
+  prompts: TenantPrompts,
+  lead: LeadRow,
+  reopenedFrom?: ClosedReason | null,
+): string {
+  const extra = contextFor(prompts, lead.state);
   const parts = [prompts.system];
   if (extra) {
     parts.push("", "---", "", "# Contexto adicional pra este estado", extra);
@@ -63,7 +66,7 @@ function buildSystemPrompt(lead: LeadRow, reopenedFrom?: ClosedReason | null): s
   if (reopenedFrom) {
     const motivos: Record<ClosedReason, string> = {
       scheduled:
-        "AGENDADA com o Juan. Lead voltou a falar — pode ser dúvida pré-call, pedido pra remarcar, ou continuação da conversa. Reconheça o agendamento (ex.: 'oi, vamos nos falar dia X com o Juan né?') e responda o que ele trouxer.",
+        "AGENDADA. Lead voltou a falar — pode ser dúvida pré-call, pedido pra remarcar, ou continuação da conversa. Reconheça o agendamento e responda o que ele trouxer.",
       not_interested:
         "Lead havia dito que NÃO TINHA INTERESSE. Voltou agora. Recebe com naturalidade e curiosidade ('que bom te ver de volta — mudou algo no seu cenário?'). Não force a venda; descubra o gatilho que o trouxe.",
       postponed:
@@ -129,6 +132,7 @@ function mergeSlots(current: Slots, incoming: Partial<Slots>): Slots {
 }
 
 async function applyExtractedCalls(
+  tenant: TenantRow,
   calls: ExtractedCall[],
   slots: Slots,
   state: LeadState,
@@ -153,13 +157,11 @@ async function applyExtractedCalls(
     } else if (c.name === "request_handoff") {
       handoff = true;
       closedReason = "handoff";
-      await notifyJuan({ ...lead, state: "HANDOFF", slots: workingSlots }, String(c.args.motivo ?? "handoff"));
-      await pauseAi(waId);
+      await notifyJuan(tenant, { ...lead, state: "HANDOFF", slots: workingSlots }, String(c.args.motivo ?? "handoff"));
+      await pauseAi(tenant, waId);
     } else if (c.name === "close_conversation") {
       closedReason = c.args.reason === "postponed" ? "postponed" : "not_interested";
     }
-    // propose_schedule / confirm_schedule extraídos como texto são descartados de propósito
-    // (precisam do ciclo estruturado para funcionar corretamente)
   }
 
   return { slots: workingSlots, state: workingState, closedReason, handoff };
@@ -186,14 +188,19 @@ export type FsmOutput = {
   closedByHandoff?: boolean;
 };
 
-export async function runTurn(waId: string, userText: string, pushName?: string): Promise<FsmOutput> {
-  const lead = (await getLead(waId)) ?? (await upsertLead(waId, { nome: pushName ?? null }));
+export async function runTurn(
+  tenant: TenantRow,
+  waId: string,
+  userText: string,
+  pushName?: string,
+): Promise<FsmOutput> {
+  const lead =
+    (await getLead(tenant.id, waId)) ??
+    (await upsertLead(tenant.id, waId, { nome: pushName ?? null }));
 
-  // ÚNICA condição que silencia a IA: pause manual do Juan.
-  // Conversa fechada/agendada/handoff: se o lead voltou a falar, IA responde
-  // (e a conversa é reaberta automaticamente).
+  // ÚNICA condição que silencia a IA: pause manual do owner.
   if (lead.paused) {
-    logger.info({ waId, state: lead.state }, "skip: lead paused by Juan");
+    logger.info({ tenant: tenant.slug, waId, state: lead.state }, "skip: lead paused by owner");
     return { replyText: null, newState: lead.state, closedReason: null };
   }
 
@@ -201,20 +208,19 @@ export async function runTurn(waId: string, userText: string, pushName?: string)
   let reopenedFrom: ClosedReason | null = null;
   if (lead.status === "closed") {
     reopenedFrom = lead.closed_reason;
-    await reopenConversation(waId);
-    logger.info({ waId, reopenedFrom }, "auto-reopened: lead voltou após fechamento");
+    await reopenConversation(tenant.id, waId);
+    logger.info({ tenant: tenant.slug, waId, reopenedFrom }, "auto-reopened: lead voltou após fechamento");
     lead.status = "open";
     lead.closed_reason = null;
     lead.closed_at = null;
   }
 
-  // userText é o agregado do debounce; cada mensagem individual já foi gravada
-  // no DB pelo webhook/simulator. Aqui só empurramos o agregado para o histórico
-  // da LLM (assim ela vê o burst concatenado num único turno).
-  await pushHistory(waId, "user", userText);
+  const prompts = promptsFor(tenant.prompt_dir);
 
-  const history = await loadHistory(waId);
-  const systemPrompt = buildSystemPrompt(lead, reopenedFrom);
+  await pushHistory(tenant.slug, waId, "user", userText);
+
+  const history = await loadHistory(tenant.slug, waId);
+  const systemPrompt = buildSystemPrompt(prompts, lead, reopenedFrom);
 
   const messages: ChatMessage[] = [{ role: "system", content: systemPrompt }, ...history];
 
@@ -226,7 +232,6 @@ export async function runTurn(waId: string, userText: string, pushName?: string)
 
   const MAX_STEPS = 3;
   for (let step = 0; step < MAX_STEPS; step++) {
-    // no último passo, tira as tools pra forçar uma resposta em texto ao lead
     const useTools = step < MAX_STEPS - 1;
     let choice;
     try {
@@ -240,10 +245,9 @@ export async function runTurn(waId: string, userText: string, pushName?: string)
     } catch (err) {
       const errMsg = String((err as Error)?.message ?? err ?? "");
       const isRateLimit = errMsg.includes("rate_limit_exceeded") || (err as { status?: number })?.status === 429;
-      logger.error({ err, waId, step, isRateLimit }, "fsm: chat failed");
+      logger.error({ err, tenant: tenant.slug, waId, step, isRateLimit }, "fsm: chat failed");
 
       if (errMsg.includes("tool_use_failed") && step < MAX_STEPS - 1) {
-        // tool call rejeitada pelo validador — tenta de novo sem tools
         messages.push({
           role: "system",
           content:
@@ -301,21 +305,19 @@ export async function runTurn(waId: string, userText: string, pushName?: string)
                 : undefined);
           const result = lookupPricing(valor, tipo);
           if (result.ok) {
-            // RETORNO QUALITATIVO — Stella NÃO deve citar números ao lead.
             toolResult =
               `pricing_check: faixa de R$ ${valor.toLocaleString("pt-BR")} (${result.row.tipo}) CABE no perfil. ` +
               `REGRA: NÃO mencione valor de parcela ao lead. Apenas confirme qualitativamente ` +
-              `(ex.: "cabe bem", "é uma faixa comum", "o Juan trabalha bastante nesse range") ` +
+              `(ex.: "cabe bem", "é uma faixa comum", "trabalho bastante nesse range") ` +
               `e CONDUZA pro agendamento se já tiver as 2 perguntas BANT mínimas.`;
           } else if (result.reason === "fora_da_tabela") {
-            // valor muito baixo OU muito alto
             const muitoBaixo = valor < 60_000;
             toolResult = muitoBaixo
               ? `pricing_check: R$ ${valor.toLocaleString("pt-BR")} ESTÁ ABAIXO da faixa típica. ` +
                 `Auto novo hoje começa em ~R$ 80k. Não confirme essa faixa baixa. ` +
                 `Pergunte o modelo/perfil de carro e ajude o lead a calibrar pra cima (popular: 80-110k, médio: 110-180k, SUV: 180k+).`
               : `pricing_check: R$ ${valor.toLocaleString("pt-BR")} está fora da tabela mas pode estar dentro do escopo. ` +
-                `Não confirme valor; pergunte se faz sentido o range e direciona pro Juan validar.`;
+                `Não confirme valor; pergunte se faz sentido o range e direciona pro especialista validar.`;
           } else {
             toolResult = `pricing_invalido (${result.reason}) — peça o valor da carta novamente em R$.`;
           }
@@ -323,12 +325,11 @@ export async function runTurn(waId: string, userText: string, pushName?: string)
           closedByHandoff = true;
           closedReason = "handoff";
           const motivo = String(args.motivo ?? "handoff solicitado");
-          await notifyJuan({ ...lead, state: "HANDOFF", slots: workingSlots }, motivo);
-          await pauseAi(waId);
-          // resposta determinística — não deixa a LLM continuar gerando
+          await notifyJuan(tenant, { ...lead, state: "HANDOFF", slots: workingSlots }, motivo);
+          await pauseAi(tenant, waId);
           replyText =
             (msg.content && sanitizeReply(msg.content).clean) ||
-            "Beleza! Vou chamar o Juan agora pra falar com você. Assim que ele puder, te responde por aqui mesmo 🙌";
+            `Beleza! Vou chamar o ${tenant.owner_name} agora pra falar com você. Assim que ele puder, te responde por aqui mesmo 🙌`;
           break;
         } else if (name === "close_conversation") {
           const reason = args.reason === "postponed" ? "postponed" : "not_interested";
@@ -341,14 +342,14 @@ export async function runTurn(waId: string, userText: string, pushName?: string)
           break;
         } else if (name === "propose_schedule") {
           workingState = "S4_AGENDAMENTO";
-          const slots = await fetchAndCacheSlots(waId);
+          const slots = await fetchAndCacheSlots(tenant, waId);
           toolResult = `slots:${JSON.stringify(slots.map((s, i) => ({ i, label: s.label })))}`;
           messages.push({ role: "tool", tool_call_id: tc.id, name, content: toolResult } as ChatMessage);
           messages.push({
             role: "system",
             content:
               `Agora ofereça os horários ao lead. Formato sugerido (mas adapte ao tom):\n\n` +
-              formatOffer(slots),
+              formatOffer(tenant, slots),
           });
           continue;
         } else if (name === "confirm_schedule") {
@@ -359,7 +360,7 @@ export async function runTurn(waId: string, userText: string, pushName?: string)
             slots: workingSlots,
             nome: workingSlots.nome ?? lead.nome,
           };
-          const pick = await confirmSlot(leadForConfirm, idx, channel);
+          const pick = await confirmSlot(tenant, leadForConfirm, idx, channel);
           if (pick) {
             workingState = "S5_CONFIRMADO";
             closedReason = "scheduled";
@@ -368,17 +369,16 @@ export async function runTurn(waId: string, userText: string, pushName?: string)
             messages.push({ role: "tool", tool_call_id: tc.id, name, content: toolResult } as ChatMessage);
             messages.push({
               role: "system",
-              content: `Confirme ao lead que está marcado para ${pick.label} via ${channelLabel}, e diga que o Juan chama no horário.`,
+              content: `Confirme ao lead que está marcado para ${pick.label} via ${channelLabel}, e diga que o ${tenant.owner_name} chama no horário.`,
             });
             continue;
           }
-          const offered = await getOfferedSlots(waId);
+          const offered = await getOfferedSlots(tenant, waId);
           toolResult = `invalid_index:available:${JSON.stringify(offered.map((s, i) => ({ i, label: s.label })))}`;
         }
 
         messages.push({ role: "tool", tool_call_id: tc.id, name, content: toolResult } as ChatMessage);
       }
-      // se alguma tool terminou a conversa (handoff/close), já setamos replyText — sai do loop
       if (replyText) break;
       continue;
     }
@@ -386,10 +386,12 @@ export async function runTurn(waId: string, userText: string, pushName?: string)
     const rawContent = (msg.content ?? "").trim();
     const { clean, calls } = sanitizeReply(rawContent);
 
-    // aplica efeitos de tool calls que vieram como texto
     if (calls.length > 0) {
-      logger.warn({ waId, count: calls.length, names: calls.map((c) => c.name) }, "sanitize: extracted inline tool calls");
-      const sideEffects = await applyExtractedCalls(calls, workingSlots, workingState, lead, waId);
+      logger.warn(
+        { tenant: tenant.slug, waId, count: calls.length, names: calls.map((c) => c.name) },
+        "sanitize: extracted inline tool calls",
+      );
+      const sideEffects = await applyExtractedCalls(tenant, calls, workingSlots, workingState, lead, waId);
       workingSlots = sideEffects.slots;
       workingState = sideEffects.state;
       if (sideEffects.closedReason && !closedReason) closedReason = sideEffects.closedReason;
@@ -398,8 +400,6 @@ export async function runTurn(waId: string, userText: string, pushName?: string)
 
     replyText = clean || null;
 
-    // se o modelo emitiu só tool calls como texto (sem conteúdo limpo),
-    // pede uma nova resposta natural sem tools
     if (!replyText && calls.length > 0) {
       messages.push({ role: "assistant", content: rawContent } as ChatMessage);
       messages.push({
@@ -414,29 +414,25 @@ export async function runTurn(waId: string, userText: string, pushName?: string)
     break;
   }
 
-  // se esgotou o loop sem texto, manda um fallback pra não deixar o lead sem resposta
   if (!replyText) {
-    logger.warn({ waId, state: workingState }, "fsm: no reply produced — using fallback");
+    logger.warn({ tenant: tenant.slug, waId, state: workingState }, "fsm: no reply produced — using fallback");
     replyText = "Deixa eu só organizar aqui — pode me contar um pouquinho mais do que você busca?";
   }
 
   workingState = autoAdvance(workingState, workingSlots);
 
-  await updateLead(waId, {
+  await updateLead(tenant.id, waId, {
     state: workingState,
     slots: workingSlots,
     nome: workingSlots.nome ?? lead.nome ?? null,
   });
 
   if (replyText) {
-    // o log no DB (uma linha por chunk) e markLastActivity são feitos pelo worker
-    // depois de enviar via Evolution. Aqui só guardamos no histórico do Redis pra LLM
-    // ver o texto completo no próximo turno.
-    await pushHistory(waId, "assistant", replyText);
+    await pushHistory(tenant.slug, waId, "assistant", replyText);
   }
 
   if (closedReason) {
-    await closeConversation(waId, closedReason);
+    await closeConversation(tenant.id, waId, closedReason);
   }
 
   return { replyText, newState: workingState, closedReason, closedByHandoff };

@@ -1,11 +1,12 @@
 import { DateTime } from "luxon";
 import { config } from "../config.js";
 import { logger } from "../core/logger.js";
+import { requireTenantById, type TenantRow } from "../core/tenants.js";
 import { prospectSendQueue, prospectSendJobId } from "../workers/queues.js";
 import {
   countSentToday,
-  getCampaign,
-  listCampaigns,
+  getCampaignById,
+  listAllRunningCampaigns,
   pickNextPendingBatch,
   updateCampaignStatus,
   updateProspect,
@@ -13,75 +14,65 @@ import {
   type CampaignRow,
 } from "./repo.js";
 
-// Decide se o horário atual é "comercial" (seg-sex, dentro de WORK_START_HOUR..WORK_END_HOUR).
-function isWorkHourNow(): boolean {
-  const now = DateTime.now().setZone(config.TIMEZONE);
-  if (now.weekday >= 6) return false; // 6=sáb, 7=dom
-  return now.hour >= config.WORK_START_HOUR && now.hour < config.WORK_END_HOUR;
+function isWorkHourNow(tenant: TenantRow): boolean {
+  const now = DateTime.now().setZone(tenant.timezone);
+  if (now.weekday >= 6) return false;
+  return now.hour >= tenant.work_start_hour && now.hour < tenant.work_end_hour;
 }
 
-// Quantas horas úteis ainda sobram hoje (mínimo 0.5 pra evitar divisão por zero).
-function workHoursRemainingToday(): number {
-  const now = DateTime.now().setZone(config.TIMEZONE);
+function workHoursRemainingToday(tenant: TenantRow): number {
+  const now = DateTime.now().setZone(tenant.timezone);
   if (now.weekday >= 6) return 0;
-  const endHour = config.WORK_END_HOUR;
-  if (now.hour >= endHour) return 0;
-  const remaining = endHour - now.hour - now.minute / 60;
+  if (now.hour >= tenant.work_end_hour) return 0;
+  const remaining = tenant.work_end_hour - now.hour - now.minute / 60;
   return Math.max(0.5, remaining);
 }
 
 function randomJitterMs(): number {
   const max = config.PROSPECT_JITTER_MS;
-  return Math.floor(Math.random() * max * 2) - max; // ±max
+  return Math.floor(Math.random() * max * 2) - max;
 }
 
-// Tick de scheduler — chama periodicamente (ex: a cada 5min via cron interno).
-// Pra cada campanha 'running', calcula quantos prospects mandar agora e enfileira.
 export async function tickAllCampaigns(): Promise<void> {
-  const campaigns = await listCampaigns();
+  const campaigns = await listAllRunningCampaigns();
   for (const c of campaigns) {
-    if (c.status !== "running") continue;
     try {
-      await tickCampaign(c);
+      const tenant = await requireTenantById(c.tenant_id);
+      await tickCampaign(tenant, c);
     } catch (err) {
       logger.error({ err, campaignId: c.id }, "prospect dispatcher tick failed");
     }
   }
 }
 
-export async function tickCampaign(campaign: CampaignRow): Promise<void> {
-  if (campaign.work_hours_only && !isWorkHourNow()) {
-    logger.debug({ campaignId: campaign.id }, "outside work hours, skip");
+export async function tickCampaign(tenant: TenantRow, campaign: CampaignRow): Promise<void> {
+  if (campaign.work_hours_only && !isWorkHourNow(tenant)) {
+    logger.debug({ tenant: tenant.slug, campaignId: campaign.id }, "outside work hours, skip");
     return;
   }
 
   const sentToday = await countSentToday(campaign.id);
   const remainingToday = campaign.rate_per_day - sentToday;
   if (remainingToday <= 0) {
-    logger.debug({ campaignId: campaign.id, sentToday }, "daily quota reached");
+    logger.debug({ tenant: tenant.slug, campaignId: campaign.id, sentToday }, "daily quota reached");
     return;
   }
 
-  // Distribui o restante uniformemente nas horas úteis restantes.
-  // Ex: 30/dia, restam 5h, já mandou 10 → faltam 20 / 5h = 4/h.
-  // Tick roda a cada PROSPECT_TICK_MS (padrão 5min = 12 ticks/h),
-  // então enfileira ceil(4 / 12) = 1 por tick. Pouco e contínuo, parece humano.
-  const hoursLeft = campaign.work_hours_only ? workHoursRemainingToday() : 24;
+  const hoursLeft = campaign.work_hours_only ? workHoursRemainingToday(tenant) : 24;
   const perHour = remainingToday / Math.max(hoursLeft, 1);
   const ticksPerHour = (60 * 60 * 1000) / config.PROSPECT_TICK_MS;
   const perTick = Math.max(1, Math.ceil(perHour / ticksPerHour));
 
   const batch = await pickNextPendingBatch(campaign.id, perTick);
   if (batch.length === 0) {
-    // sem mais pending? marca como done
-    logger.info({ campaignId: campaign.id }, "no more pending prospects → marking done");
+    logger.info({ tenant: tenant.slug, campaignId: campaign.id }, "no more pending prospects → marking done");
     await updateCampaignStatus(campaign.id, "done");
     return;
   }
 
   for (const p of batch) {
     const jitter = randomJitterMs();
-    const delayMs = Math.max(0, jitter); // só jitter positivo, não atrasar pro passado
+    const delayMs = Math.max(0, jitter);
     const jobId = prospectSendJobId(p.id);
     try {
       await prospectSendQueue.add(
@@ -94,7 +85,6 @@ export async function tickCampaign(campaign: CampaignRow): Promise<void> {
     } catch (err) {
       const msg = String((err as Error).message ?? err);
       if (msg.includes("already exists")) {
-        // job já enfileirado, ok
         continue;
       }
       logger.error({ err, prospectId: p.id }, "failed to enqueue prospect");
@@ -102,18 +92,18 @@ export async function tickCampaign(campaign: CampaignRow): Promise<void> {
   }
 
   logger.info(
-    { campaignId: campaign.id, enqueued: batch.length, perTick, hoursLeft, sentToday },
+    { tenant: tenant.slug, campaignId: campaign.id, enqueued: batch.length, perTick, hoursLeft, sentToday },
     "prospect tick: enqueued batch",
   );
 }
 
-// Chamado quando o usuário clica "Iniciar" no UI.
-export async function startCampaign(id: number): Promise<void> {
-  const c = await getCampaign(id);
+export async function startCampaign(tenantId: number, id: number): Promise<void> {
+  const c = await getCampaignById(id);
   if (!c) throw new Error("campaign not found");
+  if (c.tenant_id !== tenantId) throw new Error("campaign tenant mismatch");
+  const tenant = await requireTenantById(c.tenant_id);
   await updateCampaignStatus(id, "running");
-  // tick imediato pra não esperar 5min até o primeiro envio
-  await tickCampaign({ ...c, status: "running" });
+  await tickCampaign(tenant, { ...c, status: "running" });
 }
 
 export async function pauseCampaign(id: number): Promise<void> {
