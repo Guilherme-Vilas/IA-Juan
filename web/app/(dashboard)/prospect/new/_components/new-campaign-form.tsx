@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { Card, CardBody, CardHeader } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 
-export function NewCampaignForm() {
+export function NewCampaignForm({ tenantSlug }: { tenantSlug: string }) {
   const router = useRouter();
   const [name, setName] = useState("");
   const [channel, setChannel] = useState<"whatsapp" | "linkedin">("whatsapp");
@@ -23,7 +23,7 @@ export function NewCampaignForm() {
     setBusy(true);
     setError(null);
     try {
-      const res = await fetch("/api/admin-proxy/campaigns", {
+      const res = await fetch(`/api/admin-proxy/tenants/${tenantSlug}/campaigns`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({

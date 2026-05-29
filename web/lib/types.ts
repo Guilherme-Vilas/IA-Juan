@@ -1,6 +1,15 @@
 // Mirror dos tipos de /src/core/db.ts — mantenha em sincronia.
 // (Idealmente, extrair pra /packages/shared no futuro.)
 
+export type Tenant = {
+  id: number;
+  slug: string;
+  name: string;
+  evolution_instance: string;
+  owner_name: string;
+  active: boolean;
+};
+
 export type LeadState =
   | "S0_ABERTURA"
   | "S1_DESCOBERTA"
@@ -36,6 +45,7 @@ export type Slots = {
 
 export type Lead = {
   id: number;
+  tenant_id: number;
   wa_id: string;
   nome: string | null;
   source: string | null;

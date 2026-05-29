@@ -3,6 +3,7 @@ import { Header } from "@/components/layout/header";
 import { Card, CardBody } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { campaignApi } from "@/lib/api";
+import { getCurrentTenant } from "@/lib/tenant";
 import {
   CAMPAIGN_STATUS_COLORS,
   CAMPAIGN_STATUS_LABELS,
@@ -13,10 +14,11 @@ import { Plus, Send } from "lucide-react";
 export const dynamic = "force-dynamic";
 
 export default async function ProspectListPage() {
+  const tenant = await getCurrentTenant();
   let campaigns: Campaign[] = [];
   let error: string | null = null;
   try {
-    const data = (await campaignApi.list()) as { campaigns: Campaign[] };
+    const data = (await campaignApi(tenant.slug).list()) as { campaigns: Campaign[] };
     campaigns = data.campaigns;
   } catch (err) {
     error = String(err);
@@ -26,7 +28,7 @@ export default async function ProspectListPage() {
     <>
       <Header
         title="Prospecção"
-        subtitle={`${campaigns.length} campanha(s)`}
+        subtitle={`${tenant.name} · ${campaigns.length} campanha(s)`}
         action={
           <Link
             href="/prospect/new"
@@ -74,9 +76,7 @@ export default async function ProspectListPage() {
                         </>
                       )}
                     </div>
-                    <p className="mt-3 line-clamp-2 text-xs text-ink-muted">
-                      {c.template_text}
-                    </p>
+                    <p className="mt-3 line-clamp-2 text-xs text-ink-muted">{c.template_text}</p>
                   </CardBody>
                 </Card>
               </Link>

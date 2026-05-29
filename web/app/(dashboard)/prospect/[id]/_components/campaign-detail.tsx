@@ -27,10 +27,12 @@ Maria Souza,maria-souza,Beta SA,Sócia`;
 type Preview = { prospect: { id: number; nome: string | null; empresa: string | null; external_id: string }; message: string };
 
 export function CampaignDetail({
+  tenantSlug,
   campaign,
   metrics,
   prospects,
 }: {
+  tenantSlug: string;
   campaign: Campaign;
   metrics: CampaignMetrics;
   prospects: Prospect[];
@@ -43,6 +45,7 @@ export function CampaignDetail({
   const [error, setError] = useState<string | null>(null);
 
   const csvPlaceholder = campaign.channel === "whatsapp" ? CSV_PLACEHOLDER_WA : CSV_PLACEHOLDER_LI;
+  const campaignBase = `tenants/${tenantSlug}/campaigns/${campaign.id}`;
 
   async function call(path: string, init?: RequestInit) {
     const res = await fetch(`/api/admin-proxy/${path}`, {
@@ -60,7 +63,7 @@ export function CampaignDetail({
     setError(null);
     setUploadResult(null);
     try {
-      const data = await call(`campaigns/${campaign.id}/prospects`, {
+      const data = await call(`${campaignBase}/prospects`, {
         method: "POST",
         body: JSON.stringify({ csv }),
       });
@@ -78,7 +81,7 @@ export function CampaignDetail({
     setBusy(true);
     setError(null);
     try {
-      const data = await call(`campaigns/${campaign.id}/preview`, {
+      const data = await call(`${campaignBase}/preview`, {
         method: "POST",
         body: JSON.stringify({ limit: 3 }),
       });
@@ -94,7 +97,7 @@ export function CampaignDetail({
     setBusy(true);
     setError(null);
     try {
-      await call(`campaigns/${campaign.id}/${act}`, { method: "POST" });
+      await call(`${campaignBase}/${act}`, { method: "POST" });
       router.refresh();
     } catch (err) {
       setError(String(err));

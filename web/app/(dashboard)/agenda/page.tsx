@@ -2,6 +2,7 @@ import { Header } from "@/components/layout/header";
 import { Card, CardBody, CardHeader } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { pool } from "@/lib/db";
+import { getCurrentTenant } from "@/lib/tenant";
 import { Phone, Video } from "lucide-react";
 
 export const dynamic = "force-dynamic";
@@ -16,28 +17,35 @@ type Appointment = {
   slots: { valor_bem?: number; interesse?: string };
 };
 
-async function getAppointments(): Promise<Appointment[]> {
+async function getAppointments(tenantId: number): Promise<Appointment[]> {
   const { rows } = await pool.query<Appointment>(
     `SELECT a.id, a.scheduled_at, a.meeting_channel, a.status,
             l.wa_id, l.nome, l.slots
        FROM appointments a
        JOIN leads l ON l.id = a.lead_id
-      WHERE a.scheduled_at > now() - interval '2 days'
+      WHERE a.tenant_id = $1
+        AND a.scheduled_at > now() - interval '2 days'
       ORDER BY a.scheduled_at ASC`,
+    [tenantId],
   );
   return rows;
 }
 
 export default async function AgendaPage() {
-  const items = await getAppointments();
+  const tenant = await getCurrentTenant();
+  const items = await getAppointments(tenant.id);
   const byDay = items.reduce<Record<string, Appointment[]>>((acc, a) => {
-    const day = new Date(a.scheduled_at).toLocaleDateString("pt-BR", { weekday: "long", day: "2-digit", month: "long" });
+    const day = new Date(a.scheduled_at).toLocaleDateString("pt-BR", {
+      weekday: "long",
+      day: "2-digit",
+      month: "long",
+    });
     (acc[day] ??= []).push(a);
     return acc;
   }, {});
   return (
     <>
-      <Header title="Agenda" subtitle={`${items.length} agendamentos`} />
+      <Header title="Agenda" subtitle={`${tenant.name} · ${items.length} agendamentos`} />
       <div className="flex-1 space-y-4 overflow-y-auto px-6 py-4">
         {Object.entries(byDay).map(([day, list]) => (
           <Card key={day}>
@@ -49,7 +57,10 @@ export default async function AgendaPage() {
                 <div key={a.id} className="flex items-center gap-3 py-2">
                   <div className="w-16 text-center">
                     <div className="text-lg font-semibold text-brand-700">
-                      {new Date(a.scheduled_at).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}
+                      {new Date(a.scheduled_at).toLocaleTimeString("pt-BR", {
+                        hour: "2-digit",
+                        minute: "2-digit",
+                      })}
                     </div>
                   </div>
                   <div className="flex-1">
@@ -58,9 +69,13 @@ export default async function AgendaPage() {
                   </div>
                   <Badge className="bg-slate-100 text-slate-700">
                     {a.meeting_channel === "video" ? (
-                      <><Video size={11} /> Vídeo</>
+                      <>
+                        <Video size={11} /> Vídeo
+                      </>
                     ) : (
-                      <><Phone size={11} /> Ligação</>
+                      <>
+                        <Phone size={11} /> Ligação
+                      </>
                     )}
                   </Badge>
                   <Badge className="bg-emerald-100 text-emerald-700">{a.status}</Badge>
