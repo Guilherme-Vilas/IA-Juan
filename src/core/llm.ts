@@ -4,11 +4,20 @@ import { logger } from "./logger.js";
 
 export const openai = new OpenAI({ apiKey: config.OPENAI_API_KEY });
 
+export type ChatToolCall = {
+  id: string;
+  type: "function";
+  function: { name: string; arguments: string };
+};
+
 export type ChatMessage = {
   role: "system" | "user" | "assistant" | "tool";
   content: string;
   tool_call_id?: string;
   name?: string;
+  // OpenAI exige que mensagens 'tool' venham imediatamente apos uma 'assistant'
+  // que carregue o campo tool_calls com o id correspondente.
+  tool_calls?: ChatToolCall[];
 };
 
 export type ToolDef = {

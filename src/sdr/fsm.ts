@@ -313,7 +313,13 @@ export async function runTurn(
     ).tool_calls;
 
     if (toolCalls && toolCalls.length > 0) {
-      messages.push({ role: "assistant", content: msg.content ?? "" } as ChatMessage);
+      // Preserva tool_calls na mensagem do assistant — OpenAI exige isso pra
+      // permitir as mensagens 'tool' subsequentes referenciarem os tool_call_ids.
+      messages.push({
+        role: "assistant",
+        content: msg.content ?? "",
+        tool_calls: toolCalls,
+      } as ChatMessage);
 
       for (const tc of toolCalls) {
         const name = tc.function.name;
