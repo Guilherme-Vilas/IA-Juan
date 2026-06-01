@@ -23,8 +23,11 @@ export type MeetingChannel = "ligacao" | "video";
 
 export type Slots = {
   nome?: string;
+  profissao?: string;               // com o que trabalha (texto livre curto)
+  renda_aproximada?: string;        // faixa em string: "4-8k", "8-15k", "15-25k", "25k+"
+  modelo_carro?: string;            // modelo/marca pretendido (texto livre)
   interesse?: "imovel" | "auto" | "investimento" | "outro";
-  capacidade_mensal?: number;       // renda/parcela suportada por mes (R$)
+  capacidade_mensal?: number;       // parcela suportada por mes (R$)
   valor_bem?: number;               // valor do bem/carta/imovel (R$)
   prazo_meses?: number;
   intencao_lance?: boolean;

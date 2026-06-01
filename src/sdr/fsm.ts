@@ -129,6 +129,12 @@ function normalizeTipoImovel(v: unknown): Slots["tipo_imovel"] | undefined {
 function cleanSlotsPayload(raw: Record<string, unknown>): Partial<Slots> {
   const out: Partial<Slots> = {};
   if (typeof raw.nome === "string" && raw.nome.trim()) out.nome = raw.nome.trim();
+  if (typeof raw.profissao === "string" && raw.profissao.trim())
+    out.profissao = raw.profissao.trim();
+  if (typeof raw.renda_aproximada === "string" && raw.renda_aproximada.trim())
+    out.renda_aproximada = raw.renda_aproximada.trim();
+  if (typeof raw.modelo_carro === "string" && raw.modelo_carro.trim())
+    out.modelo_carro = raw.modelo_carro.trim();
   const i = normalizeInteresse(raw.interesse);
   if (i) out.interesse = i;
   if (typeof raw.capacidade_mensal === "number" && raw.capacidade_mensal > 0)

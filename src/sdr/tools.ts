@@ -11,6 +11,21 @@ export const SDR_TOOLS: ToolDef[] = [
         type: "object",
         properties: {
           nome: { type: "string", description: "Nome/apelido do lead (só envie se o lead disse)" },
+          profissao: {
+            type: "string",
+            description:
+              "Com o que o lead trabalha (texto livre curto, ex: 'dentista', 'engenheiro civil', 'sócio de restaurante'). Só envie quando o lead disser.",
+          },
+          renda_aproximada: {
+            type: "string",
+            description:
+              "Faixa de renda mensal do lead. Valores esperados: '4-8k', '8-15k', '15-25k', '25k+', ou texto livre curto se o lead disse outra coisa. Só envie quando o lead indicar.",
+          },
+          modelo_carro: {
+            type: "string",
+            description:
+              "Modelo/marca do carro pretendido (texto livre, ex: 'Compass', 'BMW X3', 'HB20'). Só envie quando interesse for 'auto' e o lead mencionar.",
+          },
           interesse: {
             type: "string",
             description:
@@ -18,7 +33,8 @@ export const SDR_TOOLS: ToolDef[] = [
           },
           capacidade_mensal: {
             type: "number",
-            description: "Quanto o lead pode pagar por mês em R$ (número, sem pontuação)",
+            description:
+              "Parcela suportada por mês em R$ (número, sem pontuação). Use quando o lead disser uma parcela específica ou faixa de parcela.",
           },
           valor_bem: {
             type: "number",

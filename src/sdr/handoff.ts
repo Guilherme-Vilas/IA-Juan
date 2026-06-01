@@ -6,7 +6,10 @@ import type { TenantRow } from "../core/tenants.js";
 function formatSlots(slots: LeadRow["slots"]): string {
   const lines: string[] = [];
   if (slots.nome) lines.push(`• Nome: ${slots.nome}`);
+  if (slots.profissao) lines.push(`• Profissão: ${slots.profissao}`);
+  if (slots.renda_aproximada) lines.push(`• Renda aproximada: ${slots.renda_aproximada}`);
   if (slots.interesse) lines.push(`• Interesse: ${slots.interesse}`);
+  if (slots.modelo_carro) lines.push(`• Modelo pretendido: ${slots.modelo_carro}`);
   if (slots.tipo_imovel) lines.push(`• Tipo de imóvel: ${slots.tipo_imovel}`);
   if (slots.finalidade) lines.push(`• Finalidade: ${slots.finalidade}`);
   if (slots.regiao_interesse) lines.push(`• Região: ${slots.regiao_interesse}`);

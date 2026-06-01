@@ -30,6 +30,9 @@ export type ClosedReason =
 
 export type Slots = {
   nome?: string;
+  profissao?: string;
+  renda_aproximada?: string;
+  modelo_carro?: string;
   interesse?: "imovel" | "auto" | "investimento" | "outro";
   capacidade_mensal?: number;
   valor_bem?: number;

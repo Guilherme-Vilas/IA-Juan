@@ -39,7 +39,7 @@ const schema = z.object({
   DEBOUNCE_MS: z.coerce.number().default(5000),
   LEAD_STATE_TTL_SECONDS: z.coerce.number().default(60 * 60 * 24 * 7),
 
-  FOLLOWUP_1_MS: z.coerce.number().default(15 * 60 * 1000),
+  FOLLOWUP_1_MS: z.coerce.number().default(40 * 60 * 1000), // 40min — lead respira antes do primeiro toque
   FOLLOWUP_2_MS: z.coerce.number().default(24 * 60 * 60 * 1000),
   FOLLOWUP_CLOSE_MS: z.coerce.number().default(24 * 60 * 60 * 1000),
 
