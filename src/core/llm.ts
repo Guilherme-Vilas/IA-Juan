@@ -1,8 +1,8 @@
-import Groq from "groq-sdk";
+import OpenAI from "openai";
 import { config } from "../config.js";
 import { logger } from "./logger.js";
 
-export const groq = new Groq({ apiKey: config.GROQ_API_KEY });
+export const openai = new OpenAI({ apiKey: config.OPENAI_API_KEY });
 
 export type ChatMessage = {
   role: "system" | "user" | "assistant" | "tool";
@@ -24,20 +24,7 @@ function isRateLimit(err: unknown): boolean {
   const anyErr = err as { status?: number; message?: string } | null;
   if (!anyErr) return false;
   if (anyErr.status === 429) return true;
-  return String(anyErr.message ?? "").includes("rate_limit_exceeded");
-}
-
-async function callGroq(model: string, opts: ChatOpts) {
-  const started = Date.now();
-  const res = await groq.chat.completions.create({
-    model,
-    messages: opts.messages as never,
-    tools: opts.tools as never,
-    temperature: opts.temperature ?? 0.4,
-    max_tokens: opts.maxTokens ?? 700,
-  });
-  logger.debug({ model, ms: Date.now() - started }, "groq.chat");
-  return res.choices[0]!;
+  return /rate.?limit/i.test(String(anyErr.message ?? ""));
 }
 
 type ChatOpts = {
@@ -48,23 +35,36 @@ type ChatOpts = {
   maxTokens?: number;
 };
 
+async function callOpenAI(model: string, opts: ChatOpts) {
+  const started = Date.now();
+  const res = await openai.chat.completions.create({
+    model,
+    messages: opts.messages as never,
+    tools: opts.tools as never,
+    temperature: opts.temperature ?? 0.4,
+    max_tokens: opts.maxTokens ?? 700,
+  });
+  logger.debug({ model, ms: Date.now() - started }, "openai.chat");
+  return res.choices[0]!;
+}
+
 export async function chat(opts: ChatOpts) {
-  const primary = opts.model === "fast" ? config.GROQ_MODEL_FAST : config.GROQ_MODEL_MAIN;
-  const fallback = config.GROQ_MODEL_FAST;
+  const primary = opts.model === "fast" ? config.OPENAI_MODEL_FAST : config.OPENAI_MODEL_MAIN;
+  const fallback = config.OPENAI_MODEL_FAST;
 
   try {
-    return await callGroq(primary, opts);
+    return await callOpenAI(primary, opts);
   } catch (err) {
     if (isRateLimit(err) && primary !== fallback) {
-      logger.warn({ primary, fallback }, "groq rate limit hit — trying fallback model");
+      logger.warn({ primary, fallback }, "openai rate limit hit — trying fallback model");
       try {
-        return await callGroq(fallback, opts);
+        return await callOpenAI(fallback, opts);
       } catch (err2) {
-        logger.error({ err: err2, model: fallback }, "groq.chat fallback also failed");
+        logger.error({ err: err2, model: fallback }, "openai.chat fallback also failed");
         throw err2;
       }
     }
-    logger.error({ err, model: primary }, "groq.chat failed");
+    logger.error({ err, model: primary }, "openai.chat failed");
     throw err;
   }
 }

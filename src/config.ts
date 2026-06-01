@@ -16,10 +16,10 @@ const schema = z.object({
   PORT: z.coerce.number().default(3000),
   PUBLIC_BASE_URL: z.string().url(),
 
-  GROQ_API_KEY: z.string().min(1),
-  GROQ_MODEL_MAIN: z.string().default("llama-3.3-70b-versatile"),
-  GROQ_MODEL_FAST: z.string().default("llama-3.1-8b-instant"),
-  GROQ_MODEL_AUDIO: z.string().default("whisper-large-v3"),
+  OPENAI_API_KEY: z.string().min(1),
+  OPENAI_MODEL_MAIN: z.string().default("gpt-4o-mini"),
+  OPENAI_MODEL_FAST: z.string().default("gpt-4o-mini"),
+  OPENAI_MODEL_AUDIO: z.string().default("whisper-1"),
 
   // Evolution API: base URL + key sao compartilhados; a instancia (whatsapp connection)
   // vem por tenant na tabela tenants.evolution_instance.
