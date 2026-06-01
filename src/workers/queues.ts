@@ -18,9 +18,19 @@ export type ProspectSendJob = {
   prospectId: number;
 };
 
+// Retry humanizado: quando runTurn falha (erro LLM/API), Stella manda
+// "Um minuto, ja te respondo" pro lead, agenda esse job, e quando ele
+// dispara reproduz o turno SEM pedir o user repetir. Cap em 3 tentativas.
+export type RetryTurnJob = {
+  tenantId: number;
+  waId: string;
+  attempt: number; // 1..3
+};
+
 export const inboundQueue = new Queue<InboundJob>("inbound", bullConnection);
 export const followupQueue = new Queue<FollowupJob>("followup", bullConnection);
 export const prospectSendQueue = new Queue<ProspectSendJob>("prospect-send", bullConnection);
+export const retryTurnQueue = new Queue<RetryTurnJob>("retry-turn", bullConnection);
 
 export function debounceJobId(tenantId: number, waId: string): string {
   return `debounce-${tenantId}-${waId}`;
@@ -32,6 +42,10 @@ export function followupJobId(tenantId: number, waId: string, stage: 1 | 2 | 3):
 
 export function prospectSendJobId(prospectId: number): string {
   return `prospect-send-${prospectId}`;
+}
+
+export function retryTurnJobId(tenantId: number, waId: string, attempt: number): string {
+  return `retry-turn-${tenantId}-${waId}-${attempt}`;
 }
 
 export async function cancelFollowups(tenantId: number, waId: string) {

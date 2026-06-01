@@ -28,6 +28,7 @@ async function main() {
   await import("./workers/inbound.worker.js");
   await import("./workers/followup.worker.js");
   await import("./workers/prospect.worker.js");
+  await import("./workers/retry.worker.js");
   logger.info("workers attached");
 
   const shutdown = async (sig: string) => {

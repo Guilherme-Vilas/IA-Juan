@@ -232,14 +232,44 @@ export type FsmOutput = {
   newState: LeadState;
   closedReason: ClosedReason | null;
   closedByHandoff?: boolean;
+  // Se setado: o worker deve agendar um retry-turn em retryAfterMs.
+  // Usado pra falhas transitorias (LLM, OpenAI 500, etc.) — Stella ja mandou
+  // "um minuto" como replyText, retry roda sem o lead precisar repetir.
+  retryAfterMs?: number;
+  // Numero da tentativa atual (incrementado pelo retry.worker antes de chamar)
+  attemptUsed?: number;
 };
+
+const RETRY_MAX_ATTEMPTS = 3;
+const RETRY_DELAYS_MS = [0, 30_000, 60_000, 120_000]; // index = attempt; attempt 0 nao usa
+
+// Frases de "aguarda um momento" — usadas quando da erro e vamos retentar.
+const WAIT_PHRASES = [
+  "Um minuto, deixa eu organizar uma coisa aqui e já te respondo 🙏",
+  "Ó, me dá só um instante — vou conferir uma coisa e já volto 🙏",
+  "Espera só um pouquinho, já te respondo 🙏",
+];
+// Prefixos pra quando voltarmos com a resposta certa após retry.
+const COMEBACK_PHRASES = [
+  "Pronto, voltei! ",
+  "Aqui de novo — desculpa a espera. ",
+  "Voltei! ",
+];
+
+function pickPhrase(list: string[], seed: number): string {
+  return list[seed % list.length]!;
+}
 
 export async function runTurn(
   tenant: TenantRow,
   waId: string,
   userText: string,
   pushName?: string,
+  retryContext?: { attempt: number },
 ): Promise<FsmOutput> {
+  const isRetry = !!retryContext;
+  const currentAttempt = retryContext?.attempt ?? 0;
+
   const lead =
     (await getLead(tenant.id, waId)) ??
     (await upsertLead(tenant.id, waId, { nome: pushName ?? null }));
@@ -263,7 +293,11 @@ export async function runTurn(
 
   const prompts = promptsFor(tenant.prompt_dir);
 
-  await pushHistory(tenant.slug, waId, "user", userText);
+  // No retry, o user message ja foi gravado no histórico no turno original
+  // que falhou. Pular pra nao duplicar.
+  if (!isRetry) {
+    await pushHistory(tenant.slug, waId, "user", userText);
+  }
 
   const history = await loadHistory(tenant.slug, waId);
   const systemPrompt = buildSystemPrompt(prompts, lead, reopenedFrom);
@@ -302,9 +336,41 @@ export async function runTurn(
         continue;
       }
 
-      replyText = isRateLimit
-        ? "Oi, to com uma lentidão técnica aqui do meu lado 😅 Pode me chamar de novo em uns 15 min? Prometo que respondo rápido."
-        : "Opa, tive um probleminha aqui 😅 pode repetir, por favor?";
+      // Falha transitória → graceful recovery: pede 1min e agenda retry.
+      // Apos RETRY_MAX_ATTEMPTS sem sucesso, escala pro Juan via handoff.
+      const nextAttempt = currentAttempt + 1;
+      if (nextAttempt < RETRY_MAX_ATTEMPTS) {
+        const wait = pickPhrase(WAIT_PHRASES, nextAttempt);
+        const delay = RETRY_DELAYS_MS[nextAttempt] ?? 60_000;
+        logger.warn(
+          { tenant: tenant.slug, waId, attempt: nextAttempt, delayMs: delay },
+          "fsm: scheduling humanized retry",
+        );
+        return {
+          replyText: isRetry ? null : wait, // no retry, nao manda "um minuto" de novo
+          newState: lead.state,
+          closedReason: null,
+          retryAfterMs: delay,
+          attemptUsed: nextAttempt,
+        };
+      }
+      // Esgotou retries → handoff pro humano
+      logger.error(
+        { tenant: tenant.slug, waId, attempts: currentAttempt },
+        "fsm: max retries reached, handing off",
+      );
+      await notifyJuan(
+        tenant,
+        { ...lead, state: "HANDOFF" },
+        `IA falhou ${currentAttempt}x após instabilidade técnica`,
+      ).catch(() => undefined);
+      await pauseAi(tenant, waId);
+      replyText =
+        "Desculpa a demora — tô com uma instabilidade aqui. Vou pedir pro " +
+        tenant.owner_name +
+        " te chamar direto, ok?";
+      closedReason = "handoff";
+      closedByHandoff = true;
       break;
     }
     const msg = choice.message;
@@ -472,6 +538,14 @@ export async function runTurn(
   }
 
   workingState = autoAdvance(workingState, workingSlots);
+
+  // Se estamos num retry e a chamada deu certo, prefixa um "Voltei!" simpático
+  // pra o lead saber que a IA retomou — soa muito mais humano que mandar a
+  // resposta seca depois de ter pedido "1min".
+  if (isRetry && replyText && !closedByHandoff) {
+    const prefix = pickPhrase(COMEBACK_PHRASES, currentAttempt);
+    replyText = prefix + replyText;
+  }
 
   await updateLead(tenant.id, waId, {
     state: workingState,
