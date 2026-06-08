@@ -4,6 +4,7 @@ import { Badge } from "@/components/ui/badge";
 import { pool } from "@/lib/db";
 import { getCurrentTenant } from "@/lib/tenant";
 import { Phone, Video } from "lucide-react";
+import { GoogleCalendarCard } from "./_components/google-calendar-card";
 
 export const dynamic = "force-dynamic";
 
@@ -47,6 +48,8 @@ export default async function AgendaPage() {
     <>
       <Header title="Agenda" subtitle={`${tenant.name} · ${items.length} agendamentos`} />
       <div className="flex-1 space-y-4 overflow-y-auto px-6 py-4">
+        <GoogleCalendarCard tenantSlug={tenant.slug} />
+
         {Object.entries(byDay).map(([day, list]) => (
           <Card key={day}>
             <CardHeader>
@@ -93,3 +96,4 @@ export default async function AgendaPage() {
     </>
   );
 }
+

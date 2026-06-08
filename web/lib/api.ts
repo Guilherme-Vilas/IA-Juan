@@ -86,3 +86,16 @@ export const prospectApi = {
       body: JSON.stringify({ reason }),
     }),
 };
+
+export function googleApi(slug: string) {
+  return {
+    status: () => adminCall(`/admin/tenants/${slug}/google/status`, { method: "GET" }),
+    calendars: () => adminCall(`/admin/tenants/${slug}/google/calendars`, { method: "GET" }),
+    setCalendar: (calendarId: string) =>
+      adminCall(`/admin/tenants/${slug}/google/calendar`, {
+        method: "PATCH",
+        body: JSON.stringify({ calendar_id: calendarId }),
+      }),
+    disconnect: () => adminCall(`/admin/tenants/${slug}/google`, { method: "DELETE" }),
+  };
+}
