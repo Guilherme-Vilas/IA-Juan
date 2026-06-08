@@ -13,6 +13,7 @@ export type TenantRow = {
   work_end_hour: number;
   meeting_duration_min: number;
   prompt_dir: string;
+  playbook_slug: string | null;
   active: boolean;
   created_at: Date;
   updated_at: Date;

@@ -57,6 +57,7 @@ export async function registerAdminRoutes(app: FastifyInstance) {
         name: t.name,
         evolution_instance: t.evolution_instance,
         owner_name: t.owner_name,
+        playbook_slug: t.playbook_slug,
         active: t.active,
       })),
     };

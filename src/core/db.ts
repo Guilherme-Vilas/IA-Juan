@@ -1,5 +1,6 @@
 import pg from "pg";
 import { config } from "../config.js";
+import { calculateLeadScore } from "./lead-score.js";
 
 export const pool = new pg.Pool({ connectionString: config.DATABASE_URL });
 
@@ -56,6 +57,9 @@ export type LeadRow = {
   source: string | null;
   state: LeadState;
   slots: Slots;
+  score: number;
+  score_label: "frio" | "morno" | "quente" | "pronto";
+  score_reasons: string[];
   paused: boolean;
   status: LeadStatus;
   closed_reason: ClosedReason | null;
@@ -125,6 +129,22 @@ export async function updateLead(
     `UPDATE leads SET ${fields.join(", ")}, updated_at = now() WHERE tenant_id = $${i++} AND wa_id = $${i}`,
     values,
   );
+
+  if (patch.state !== undefined || patch.slots !== undefined) {
+    const lead = await getLead(tenantId, waId);
+    if (lead) {
+      const next = calculateLeadScore(lead);
+      await pool.query(
+        `UPDATE leads
+            SET score = $1,
+                score_label = $2,
+                score_reasons = $3,
+                updated_at = now()
+          WHERE tenant_id = $4 AND wa_id = $5`,
+        [next.score, next.label, JSON.stringify(next.reasons), tenantId, waId],
+      );
+    }
+  }
 }
 
 export async function markLastActivity(
@@ -204,12 +224,15 @@ export async function recordAppointment(
   leadId: number,
   eventId: string,
   scheduledAt: Date,
+  endsAt: Date,
   channel: MeetingChannel | null = null,
+  provider: "internal" | "google" = "internal",
 ) {
   await pool.query(
-    `INSERT INTO appointments (tenant_id, lead_id, calendar_event_id, scheduled_at, status, meeting_channel)
-     VALUES ($1, $2, $3, $4, 'scheduled', $5)`,
-    [tenantId, leadId, eventId, scheduledAt, channel],
+    `INSERT INTO appointments
+       (tenant_id, lead_id, calendar_event_id, scheduled_at, ends_at, status, meeting_channel, calendar_provider)
+     VALUES ($1, $2, $3, $4, $5, 'scheduled', $6, $7)`,
+    [tenantId, leadId, eventId, scheduledAt, endsAt, channel, provider],
   );
 }
 

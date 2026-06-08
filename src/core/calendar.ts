@@ -10,6 +10,7 @@ import {
   updateGoogleAccessTokens,
   upsertGoogleTokens,
 } from "./google-tokens.js";
+import { listInternalBusyIntervals, listWorkingWindows } from "./internal-calendar.js";
 
 const GOOGLE_SCOPES = [
   "https://www.googleapis.com/auth/calendar",
@@ -174,11 +175,6 @@ const BROKEN_MINUTES = [15, 25, 40, 50, 35, 20, 45];
 
 export async function listFreeSlots(tenant: TenantRow, daysAhead = 4): Promise<Slot[]> {
   const client = await getClient(tenant);
-  if (!client) {
-    logger.warn({ tenant: tenant.slug }, "calendar not connected; no slots returned");
-    return [];
-  }
-
   const tz = tenant.timezone;
   const duration = tenant.meeting_duration_min;
 
@@ -190,43 +186,48 @@ export async function listFreeSlots(tenant: TenantRow, daysAhead = 4): Promise<S
     millisecond: 0,
   });
 
-  let busy: Interval[] = [];
-  try {
-    const fb = await client.cal.freebusy.query({
-      requestBody: {
-        timeMin: now.toISO()!,
-        timeMax: windowEnd.toISO()!,
-        timeZone: tz,
-        items: [{ id: client.calendarId }],
-      },
-    });
-    const arr = fb.data.calendars?.[client.calendarId]?.busy ?? [];
-    busy = arr
-      .map((b) => {
-        if (!b.start || !b.end) return null;
-        return Interval.fromDateTimes(DateTime.fromISO(b.start), DateTime.fromISO(b.end));
-      })
-      .filter((i): i is Interval => !!i);
-  } catch (err) {
-    logger.warn({ err, tenant: tenant.slug, calendarId: client.calendarId }, "freebusy failed; no slots returned");
-    return [];
+  let busy: Interval[] = await listInternalBusyIntervals(tenant.id, now, windowEnd);
+  if (client) {
+    try {
+      const fb = await client.cal.freebusy.query({
+        requestBody: {
+          timeMin: now.toISO()!,
+          timeMax: windowEnd.toISO()!,
+          timeZone: tz,
+          items: [{ id: client.calendarId }],
+        },
+      });
+      const arr = fb.data.calendars?.[client.calendarId]?.busy ?? [];
+      busy = busy.concat(
+        arr
+          .map((b) => {
+            if (!b.start || !b.end) return null;
+            return Interval.fromDateTimes(DateTime.fromISO(b.start), DateTime.fromISO(b.end));
+          })
+          .filter((i): i is Interval => !!i),
+      );
+    } catch (err) {
+      logger.warn({ err, tenant: tenant.slug, calendarId: client.calendarId }, "freebusy failed; no slots returned");
+      return [];
+    }
   }
 
   const candidates: DateTime[] = [];
-  let day = now.startOf("day");
+  const windows = await listWorkingWindows(tenant, now, windowEnd);
   let mIdx = 0;
-  while (day < windowEnd) {
-    const weekday = day.weekday;
-    if (weekday <= 5) {
-      for (let h = tenant.work_start_hour; h < tenant.work_end_hour; h += 2) {
-        const minute = BROKEN_MINUTES[mIdx % BROKEN_MINUTES.length]!;
-        mIdx++;
-        const candidate = day.set({ hour: h, minute, second: 0, millisecond: 0 });
-        if (candidate <= now) continue;
+  for (const window of windows) {
+    if (!window.start || !window.end) continue;
+    const windowEndTime = window.end;
+    let cursor = window.start;
+    while (cursor.plus({ minutes: duration }) <= windowEndTime) {
+      const minute = BROKEN_MINUTES[mIdx % BROKEN_MINUTES.length]!;
+      mIdx++;
+      const candidate = cursor.set({ minute, second: 0, millisecond: 0 });
+      if (candidate > now && candidate.plus({ minutes: duration }) <= windowEndTime) {
         candidates.push(candidate);
       }
+      cursor = cursor.plus({ hours: 2 });
     }
-    day = day.plus({ days: 1 });
   }
 
   const slots: Slot[] = [];
@@ -254,10 +255,11 @@ export async function createEvent(
     summary?: string;
     description?: string;
   },
-): Promise<string> {
+): Promise<{ eventId: string; provider: "internal" | "google" }> {
   const client = await getClient(tenant);
   if (!client) {
-    throw new Error(`Google Calendar not connected for tenant ${tenant.slug}`);
+    logger.info({ tenant: tenant.slug }, "calendar not connected; using internal appointment only");
+    return { eventId: `internal-${Date.now()}`, provider: "internal" };
   }
   const res = await client.cal.events.insert({
     calendarId: client.calendarId,
@@ -269,5 +271,5 @@ export async function createEvent(
       reminders: { useDefault: true },
     },
   });
-  return res.data.id ?? "";
+  return { eventId: res.data.id ?? "", provider: "google" };
 }

@@ -36,7 +36,7 @@ export async function confirmSlot(
     return null;
   }
   const channelLabel = channel === "video" ? "Vídeo chamada" : "Ligação";
-  const eventId = await createEvent(tenant, {
+  const created = await createEvent(tenant, {
     startISO: pick.startISO,
     endISO: pick.endISO,
     leadName: lead.nome ?? lead.slots.nome ?? lead.wa_id,
@@ -44,7 +44,15 @@ export async function confirmSlot(
     summary: `Call ${lead.nome ?? lead.slots.nome ?? "Lead"} — ${tenant.name} (${channelLabel})`,
     description: `WhatsApp: ${lead.wa_id}\nCanal: ${channelLabel}`,
   });
-  await recordAppointment(tenant.id, lead.id, eventId, new Date(pick.startISO), channel);
+  await recordAppointment(
+    tenant.id,
+    lead.id,
+    created.eventId,
+    new Date(pick.startISO),
+    new Date(pick.endISO),
+    channel,
+    created.provider,
+  );
   await redis.del(keys.offeredSlots(tenant.slug, lead.wa_id));
   await notifyScheduled(tenant, lead, pick.label, channel);
   return pick;

@@ -20,6 +20,7 @@ import { logger } from "../core/logger.js";
 import { notifyJuan, pauseAi } from "./handoff.js";
 import { confirmSlot, fetchAndCacheSlots, formatOffer, getOfferedSlots } from "./scheduler.js";
 import type { TenantRow } from "../core/tenants.js";
+import { getAgentSettings, type AgentSettingsRow } from "../core/agent-settings.js";
 
 const HISTORY_LIMIT = 10;
 
@@ -46,12 +47,27 @@ async function loadHistory(tenantSlug: string, waId: string): Promise<ChatMessag
 function buildSystemPrompt(
   prompts: TenantPrompts,
   lead: LeadRow,
+  agentSettings?: AgentSettingsRow | null,
   reopenedFrom?: ClosedReason | null,
 ): string {
   const extra = contextFor(prompts, lead.state);
   const parts = [prompts.system];
   if (extra) {
     parts.push("", "---", "", "# Contexto adicional pra este estado", extra);
+  }
+  if (agentSettings) {
+    parts.push(
+      "",
+      "---",
+      "",
+      "# Configuracao comercial do tenant",
+      `- agente: ${agentSettings.agent_name}`,
+      `- tom: ${agentSettings.tone}`,
+      `- produtos: ${agentSettings.products.join(", ") || "nao configurado"}`,
+      `- regioes: ${agentSettings.regions.join(", ") || "nao configurado"}`,
+      `- regras de qualificacao: ${agentSettings.qualification_rules || "seguir prompt base"}`,
+      `- regras de handoff: ${agentSettings.handoff_rules || "seguir prompt base"}`,
+    );
   }
   parts.push(
     "",
@@ -292,6 +308,7 @@ export async function runTurn(
   }
 
   const prompts = promptsFor(tenant.prompt_dir);
+  const agentSettings = await getAgentSettings(tenant.id);
 
   // No retry, o user message ja foi gravado no histórico no turno original
   // que falhou. Pular pra nao duplicar.
@@ -300,7 +317,7 @@ export async function runTurn(
   }
 
   const history = await loadHistory(tenant.slug, waId);
-  const systemPrompt = buildSystemPrompt(prompts, lead, reopenedFrom);
+  const systemPrompt = buildSystemPrompt(prompts, lead, agentSettings, reopenedFrom);
 
   const messages: ChatMessage[] = [{ role: "system", content: systemPrompt }, ...history];
 
