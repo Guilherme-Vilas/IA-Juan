@@ -6,7 +6,6 @@ import { transcribeAudio } from "../core/transcribe.js";
 import { appendBuffer } from "../workers/buffer.js";
 import { inboundQueue, debounceJobId } from "../workers/queues.js";
 import { logMessage, markLastActivity, upsertLead } from "../core/db.js";
-import { authUrl, saveTokensFromCode } from "../core/calendar.js";
 import { handleProspectReply } from "../prospect/handoff.js";
 import { getTenantByInstance } from "../core/tenants.js";
 
@@ -14,7 +13,9 @@ export async function registerRoutes(app: FastifyInstance) {
   app.get("/health", async () => ({ ok: true }));
 
   app.post("/webhook/evolution", async (req, reply) => {
-    const token = (req.headers["x-webhook-token"] as string | undefined) ?? req.query?.["token"];
+    const token =
+      (req.headers["x-webhook-token"] as string | undefined) ??
+      (req.query as { token?: string } | undefined)?.token;
     if (token !== config.EVOLUTION_WEBHOOK_TOKEN) {
       return reply.code(401).send({ error: "unauthorized" });
     }
@@ -91,22 +92,4 @@ export async function registerRoutes(app: FastifyInstance) {
     return reply.send({ ok: true });
   });
 
-  app.get("/oauth/google/start", async (_req, reply) => {
-    try {
-      return reply.redirect(authUrl());
-    } catch (err) {
-      return reply.code(500).send({ error: String(err) });
-    }
-  });
-
-  app.get("/oauth/google/callback", async (req, reply) => {
-    const code = (req.query as { code?: string })?.code;
-    if (!code) return reply.code(400).send({ error: "missing code" });
-    try {
-      await saveTokensFromCode(code);
-      return reply.send({ ok: true, msg: "Google Calendar autorizado. Pode fechar esta aba." });
-    } catch (err) {
-      return reply.code(500).send({ error: String(err) });
-    }
-  });
 }

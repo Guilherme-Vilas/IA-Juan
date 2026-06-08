@@ -1,10 +1,20 @@
-import fs from "node:fs";
-import path from "node:path";
+import crypto from "node:crypto";
 import { google, calendar_v3 } from "googleapis";
 import { DateTime, Interval } from "luxon";
 import { config } from "../config.js";
 import { logger } from "./logger.js";
 import type { TenantRow } from "./tenants.js";
+import {
+  getGoogleTokens,
+  setGoogleCalendarId,
+  updateGoogleAccessTokens,
+  upsertGoogleTokens,
+} from "./google-tokens.js";
+
+const GOOGLE_SCOPES = [
+  "https://www.googleapis.com/auth/calendar",
+  "https://www.googleapis.com/auth/userinfo.email",
+];
 
 function makeOAuth2() {
   if (!config.GOOGLE_CLIENT_ID || !config.GOOGLE_CLIENT_SECRET || !config.GOOGLE_REDIRECT_URI) {
@@ -17,46 +27,153 @@ function makeOAuth2() {
   );
 }
 
-export function authUrl(): string {
+function stateSecret(): string {
+  return config.GOOGLE_OAUTH_STATE_SECRET || config.EVOLUTION_WEBHOOK_TOKEN;
+}
+
+function b64url(input: string | Buffer): string {
+  return Buffer.from(input).toString("base64url");
+}
+
+function sign(payload: string): string {
+  return crypto.createHmac("sha256", stateSecret()).update(payload).digest("base64url");
+}
+
+export function makeGoogleOAuthState(tenantSlug: string): string {
+  const payload = b64url(
+    JSON.stringify({
+      tenant: tenantSlug,
+      ts: Date.now(),
+      nonce: crypto.randomBytes(12).toString("hex"),
+    }),
+  );
+  return `${payload}.${sign(payload)}`;
+}
+
+export function verifyGoogleOAuthState(state: string): { tenant: string } {
+  const [payload, sig] = state.split(".");
+  if (!payload || !sig || sign(payload) !== sig) {
+    throw new Error("invalid oauth state");
+  }
+  const parsed = JSON.parse(Buffer.from(payload, "base64url").toString("utf8")) as {
+    tenant?: string;
+    ts?: number;
+  };
+  if (!parsed.tenant || !parsed.ts) throw new Error("invalid oauth state payload");
+  if (Date.now() - parsed.ts > 30 * 60 * 1000) throw new Error("oauth state expired");
+  return { tenant: parsed.tenant };
+}
+
+export function authUrlForTenant(tenantSlug: string): string {
   const oauth2 = makeOAuth2();
-  if (!oauth2) throw new Error("Google OAuth not configured in .env");
+  if (!oauth2) throw new Error("Google OAuth not configured in env");
   return oauth2.generateAuthUrl({
     access_type: "offline",
     prompt: "consent",
-    scope: ["https://www.googleapis.com/auth/calendar"],
+    include_granted_scopes: true,
+    scope: GOOGLE_SCOPES,
+    state: makeGoogleOAuthState(tenantSlug),
   });
 }
 
-export async function saveTokensFromCode(code: string) {
+// Compatibilidade com /oauth/google/start antigo: sem tenant => Juan.
+export function authUrl(): string {
+  return authUrlForTenant("juan");
+}
+
+export async function saveTokensFromCodeForTenant(tenant: TenantRow, code: string) {
   const oauth2 = makeOAuth2();
   if (!oauth2) throw new Error("Google OAuth not configured");
   const { tokens } = await oauth2.getToken(code);
-  const dir = path.dirname(config.GOOGLE_TOKENS_PATH);
-  fs.mkdirSync(dir, { recursive: true });
-  fs.writeFileSync(config.GOOGLE_TOKENS_PATH, JSON.stringify(tokens, null, 2));
-  logger.info("google tokens saved");
+  oauth2.setCredentials(tokens);
+
+  let ownerEmail: string | null = null;
+  try {
+    const oauth2Api = google.oauth2({ version: "v2", auth: oauth2 });
+    const me = await oauth2Api.userinfo.get();
+    ownerEmail = me.data.email ?? null;
+  } catch (err) {
+    logger.warn({ err, tenant: tenant.slug }, "google userinfo failed");
+  }
+
+  await upsertGoogleTokens(tenant.id, {
+    owner_email: ownerEmail,
+    access_token: tokens.access_token ?? null,
+    refresh_token: tokens.refresh_token ?? null,
+    scope: tokens.scope ?? GOOGLE_SCOPES.join(" "),
+    token_type: tokens.token_type ?? "Bearer",
+    expiry_date: typeof tokens.expiry_date === "number" ? tokens.expiry_date : null,
+    calendar_id: "primary",
+  });
+
+  logger.info({ tenant: tenant.slug, ownerEmail }, "google tokens saved");
 }
 
-function getClient(): calendar_v3.Calendar | null {
+export async function saveTokensFromCode(code: string) {
+  const { defaultTenant } = await import("./tenants.js");
+  await saveTokensFromCodeForTenant(await defaultTenant(), code);
+}
+
+async function getClient(
+  tenant: TenantRow,
+): Promise<{ cal: calendar_v3.Calendar; calendarId: string } | null> {
   const oauth2 = makeOAuth2();
   if (!oauth2) return null;
-  if (!fs.existsSync(config.GOOGLE_TOKENS_PATH)) return null;
-  const tokens = JSON.parse(fs.readFileSync(config.GOOGLE_TOKENS_PATH, "utf8"));
-  oauth2.setCredentials(tokens);
-  return google.calendar({ version: "v3", auth: oauth2 });
+  const tokens = await getGoogleTokens(tenant.id);
+  if (!tokens?.refresh_token && !tokens?.access_token) return null;
+
+  oauth2.setCredentials({
+    access_token: tokens.access_token ?? undefined,
+    refresh_token: tokens.refresh_token ?? undefined,
+    scope: tokens.scope ?? undefined,
+    token_type: tokens.token_type ?? undefined,
+    expiry_date: tokens.expiry_date ?? undefined,
+  });
+
+  oauth2.on("tokens", (next) => {
+    void updateGoogleAccessTokens(tenant.id, {
+      access_token: next.access_token ?? undefined,
+      refresh_token: next.refresh_token ?? undefined,
+      scope: next.scope ?? undefined,
+      token_type: next.token_type ?? undefined,
+      expiry_date: typeof next.expiry_date === "number" ? next.expiry_date : undefined,
+    }).catch((err) => logger.warn({ err, tenant: tenant.slug }, "google token refresh save failed"));
+  });
+
+  return { cal: google.calendar({ version: "v3", auth: oauth2 }), calendarId: tokens.calendar_id };
 }
 
-export function isConfigured(): boolean {
-  return getClient() !== null;
+export async function isConfigured(tenant: TenantRow): Promise<boolean> {
+  return (await getClient(tenant)) !== null;
+}
+
+export async function listUserCalendars(tenant: TenantRow) {
+  const client = await getClient(tenant);
+  if (!client) return [];
+  const res = await client.cal.calendarList.list({ maxResults: 250 });
+  return (res.data.items ?? []).map((c) => ({
+    id: c.id ?? "",
+    summary: c.summary ?? c.id ?? "",
+    primary: !!c.primary,
+    accessRole: c.accessRole ?? "",
+    selected: c.id === client.calendarId,
+  }));
+}
+
+export async function chooseCalendar(tenant: TenantRow, calendarId: string) {
+  const client = await getClient(tenant);
+  if (!client) throw new Error("Google Calendar not connected");
+  await client.cal.calendarList.get({ calendarId });
+  await setGoogleCalendarId(tenant.id, calendarId);
 }
 
 export type Slot = { startISO: string; endISO: string; label: string };
 
-// Minutos "quebrados" para parecer uma agenda real, não automação de massa.
+// Minutos "quebrados" para parecer uma agenda real, nao automacao de massa.
 const BROKEN_MINUTES = [15, 25, 40, 50, 35, 20, 45];
 
 export async function listFreeSlots(tenant: TenantRow, daysAhead = 4): Promise<Slot[]> {
-  const cal = getClient();
+  const client = await getClient(tenant);
   const tz = tenant.timezone;
   const duration = tenant.meeting_duration_min;
 
@@ -69,17 +186,17 @@ export async function listFreeSlots(tenant: TenantRow, daysAhead = 4): Promise<S
   });
 
   let busy: Interval[] = [];
-  if (cal) {
+  if (client) {
     try {
-      const fb = await cal.freebusy.query({
+      const fb = await client.cal.freebusy.query({
         requestBody: {
           timeMin: now.toISO()!,
           timeMax: windowEnd.toISO()!,
           timeZone: tz,
-          items: [{ id: config.GOOGLE_CALENDAR_ID }],
+          items: [{ id: client.calendarId }],
         },
       });
-      const arr = fb.data.calendars?.[config.GOOGLE_CALENDAR_ID]?.busy ?? [];
+      const arr = fb.data.calendars?.[client.calendarId]?.busy ?? [];
       busy = arr
         .map((b) => {
           if (!b.start || !b.end) return null;
@@ -87,7 +204,7 @@ export async function listFreeSlots(tenant: TenantRow, daysAhead = 4): Promise<S
         })
         .filter((i): i is Interval => !!i);
     } catch (err) {
-      logger.warn({ err }, "freebusy failed; returning naive slots");
+      logger.warn({ err, tenant: tenant.slug }, "freebusy failed; returning naive slots");
     }
   }
 
@@ -117,7 +234,7 @@ export async function listFreeSlots(tenant: TenantRow, daysAhead = 4): Promise<S
     slots.push({
       startISO: c.toISO()!,
       endISO: end.toISO()!,
-      label: c.setLocale("pt-BR").toFormat("cccc dd/LL 'às' HH:mm"),
+      label: c.setLocale("pt-BR").toFormat("cccc dd/LL 'as' HH:mm"),
     });
   }
   return slots;
@@ -134,15 +251,15 @@ export async function createEvent(
     description?: string;
   },
 ): Promise<string> {
-  const cal = getClient();
-  if (!cal) {
-    logger.warn("calendar not configured; returning fake event id");
+  const client = await getClient(tenant);
+  if (!client) {
+    logger.warn({ tenant: tenant.slug }, "calendar not configured; returning fake event id");
     return `fake-${Date.now()}`;
   }
-  const res = await cal.events.insert({
-    calendarId: config.GOOGLE_CALENDAR_ID,
+  const res = await client.cal.events.insert({
+    calendarId: client.calendarId,
     requestBody: {
-      summary: opts.summary ?? `Call ${opts.leadName} — ${tenant.name}`,
+      summary: opts.summary ?? `Call ${opts.leadName} - ${tenant.name}`,
       description: opts.description ?? `WhatsApp: ${opts.leadWhatsapp}`,
       start: { dateTime: opts.startISO, timeZone: tenant.timezone },
       end: { dateTime: opts.endISO, timeZone: tenant.timezone },
