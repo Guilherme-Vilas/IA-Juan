@@ -52,7 +52,7 @@ export async function confirmSlot(
 
 export function formatOffer(tenant: TenantRow, slots: Slot[]): string {
   if (!slots.length) {
-    return `Não tenho horário aberto nos próximos dias na agenda do ${tenant.owner_name}. Tem alguma preferência de dia/horário que te atende melhor?`;
+    return `Não consegui encontrar horários disponíveis agora na agenda do ${tenant.owner_name}. Tem alguma preferência de dia/horário que te atende melhor?`;
   }
   const lines = slots.map((s, i) => `${i + 1}) ${s.label}`);
   return (
