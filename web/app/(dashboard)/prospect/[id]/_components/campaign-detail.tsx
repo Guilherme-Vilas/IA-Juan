@@ -171,7 +171,7 @@ export function CampaignDetail({
             <h2 className="text-sm font-semibold">Template</h2>
           </CardHeader>
           <CardBody>
-            <pre className="whitespace-pre-wrap rounded bg-slate-50 p-2 font-mono text-xs">
+            <pre className="whitespace-pre-wrap rounded bg-canvas-surface p-2 font-mono text-xs">
               {campaign.template_text}
             </pre>
             <p className="mt-2 text-xs text-ink-muted">
@@ -211,7 +211,7 @@ export function CampaignDetail({
               </div>
             </div>
             {uploadResult && (
-              <div className="rounded bg-slate-50 p-2 text-xs">
+              <div className="rounded bg-canvas-surface p-2 text-xs">
                 <p>
                   Importados: <strong>{uploadResult.inserted}</strong> · Duplicados:{" "}
                   <strong>{uploadResult.duplicates}</strong> · Inválidos:{" "}
@@ -285,7 +285,7 @@ export function CampaignDetail({
 
 function Metric({ label, value, highlight }: { label: string; value: number; highlight?: boolean }) {
   return (
-    <div className={`rounded p-2 ${highlight ? "bg-emerald-50" : "bg-slate-50"}`}>
+    <div className={`rounded p-2 ${highlight ? "bg-success/10" : "bg-canvas-surface"}`}>
       <div className="text-[10px] uppercase tracking-wide text-ink-muted">{label}</div>
       <div className={`text-base font-semibold ${highlight ? "text-emerald-700" : "text-ink"}`}>
         {value}
@@ -342,7 +342,7 @@ function ProspectRow({
             </p>
           )}
           {prospect.skip_reason && (
-            <p className="mt-1 text-xs text-amber-700">Motivo: {prospect.skip_reason}</p>
+            <p className="mt-1 text-xs text-warning">Motivo: {prospect.skip_reason}</p>
           )}
           {prospect.error_msg && (
             <p className="mt-1 text-xs text-danger">Erro: {prospect.error_msg}</p>
@@ -358,7 +358,7 @@ function ProspectRow({
                 href={linkedinUrl}
                 target="_blank"
                 rel="noopener"
-                className="inline-flex h-8 items-center gap-1 rounded-md border border-line bg-white px-3 text-xs hover:bg-slate-50"
+                className="inline-flex h-8 items-center gap-1 rounded-md border border-line bg-canvas-surface px-3 text-xs hover:bg-canvas-surface"
               >
                 <ExternalLink size={12} /> Abrir
               </a>

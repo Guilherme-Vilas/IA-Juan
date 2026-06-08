@@ -92,7 +92,7 @@ export function InternalCalendarCard({
     <Card>
       <CardHeader>
         <div className="flex items-center gap-2">
-          <Clock size={16} className="text-brand-700" />
+          <Clock size={16} className="text-brand-400" />
           <h2 className="text-sm font-semibold">Agenda interna</h2>
         </div>
       </CardHeader>

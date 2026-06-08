@@ -77,7 +77,7 @@ export default async function MetricsPage() {
                     <span className="text-ink-muted">{STATE_LABELS[s]}</span>
                     <span className="font-medium">{v}</span>
                   </div>
-                  <div className="h-2 w-full overflow-hidden rounded bg-slate-100">
+                  <div className="h-2 w-full overflow-hidden rounded bg-canvas-surface-2">
                     <div className={`h-full ${STATE_COLORS[s]}`} style={{ width: `${pct}%` }} />
                   </div>
                 </div>

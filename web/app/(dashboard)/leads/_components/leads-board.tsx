@@ -67,7 +67,7 @@ function Column({
   const color = closed ? "bg-slate-400" : STATE_COLORS[state as LeadState];
   const label = closed ? "Fechados" : STATE_LABELS[state as LeadState];
   return (
-    <div className="flex h-full w-72 shrink-0 flex-col rounded-lg bg-white shadow-card">
+    <div className="flex h-full w-72 shrink-0 flex-col rounded-lg bg-canvas-surface shadow-card">
       <div className="flex items-center justify-between border-b border-line px-3 py-2">
         <div className="flex items-center gap-2">
           <span className={`h-2 w-2 rounded-full ${color}`} />

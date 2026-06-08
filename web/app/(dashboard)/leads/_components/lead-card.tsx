@@ -6,10 +6,10 @@ import { formatCurrency, formatRelative } from "@/lib/utils";
 import { Pause, Phone, Video, MessageSquare, MapPin } from "lucide-react";
 
 const SCORE_BADGES: Record<Lead["score_label"], string> = {
-  frio: "bg-slate-100 text-slate-700",
-  morno: "bg-amber-100 text-amber-700",
+  frio: "bg-canvas-surface-2 text-ink",
+  morno: "bg-warning/15 text-warning",
   quente: "bg-orange-100 text-orange-700",
-  pronto: "bg-emerald-100 text-emerald-700",
+  pronto: "bg-success/15 text-success",
 };
 
 export function LeadCard({ lead, onClick }: { lead: Lead; onClick: () => void }) {
@@ -23,10 +23,10 @@ export function LeadCard({ lead, onClick }: { lead: Lead; onClick: () => void })
   return (
     <button
       onClick={onClick}
-      className="group rounded-md border border-line bg-white p-3 text-left text-sm shadow-sm hover:border-brand-300 hover:shadow-md"
+      className="group rounded-md border border-line bg-canvas-surface p-3 text-left text-sm shadow-sm hover:border-brand-300 hover:shadow-md"
     >
       <div className="flex items-start gap-2">
-        <div className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-brand-100 text-xs font-semibold text-brand-700">
+        <div className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-brand-100 text-xs font-semibold text-brand-400">
           {initials}
         </div>
         <div className="min-w-0 flex-1">
@@ -47,10 +47,10 @@ export function LeadCard({ lead, onClick }: { lead: Lead; onClick: () => void })
           {lead.score_label} · {lead.score}
         </Badge>
         {lead.slots.interesse && (
-          <Badge className="bg-slate-100 text-slate-700">{lead.slots.interesse}</Badge>
+          <Badge className="bg-canvas-surface-2 text-ink">{lead.slots.interesse}</Badge>
         )}
         {lead.slots.valor_bem && (
-          <Badge className="bg-emerald-50 text-emerald-700">
+          <Badge className="bg-success/10 text-success">
             {formatCurrency(lead.slots.valor_bem)}
           </Badge>
         )}

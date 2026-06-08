@@ -29,7 +29,7 @@ export function TenantSelector({
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
-        className="flex items-center gap-2 rounded-md border border-line bg-white px-3 py-1.5 text-sm hover:bg-slate-50"
+        className="flex items-center gap-2 rounded-md border border-line bg-canvas-surface-2 px-3 py-1.5 text-sm text-ink transition-colors hover:border-brand-600/40"
       >
         <Building2 size={14} className="text-ink-muted" />
         <span className="font-medium">{current.name}</span>
@@ -38,24 +38,24 @@ export function TenantSelector({
       {open && (
         <>
           <div className="fixed inset-0 z-10" onClick={() => setOpen(false)} />
-          <div className="absolute right-0 z-20 mt-1 w-64 rounded-md border border-line bg-white py-1 shadow-lg">
+          <div className="absolute right-0 z-20 mt-1 w-64 rounded-md border border-line bg-canvas-surface py-1 shadow-elevated">
             {tenants.map((t) => (
               <button
                 key={t.slug}
                 type="button"
                 onClick={() => choose(t.slug)}
-                className={`flex w-full items-center justify-between px-3 py-2 text-left text-sm hover:bg-slate-50 ${
+                className={`flex w-full items-center justify-between px-3 py-2 text-left text-sm transition-colors hover:bg-canvas-surface-2 ${
                   !t.active ? "opacity-50" : ""
                 }`}
               >
                 <div>
-                  <div className="font-medium">{t.name}</div>
+                  <div className="font-medium text-ink">{t.name}</div>
                   <div className="text-xs text-ink-muted">
                     {t.owner_name} · {t.active ? "ativo" : "inativo"}
                   </div>
                 </div>
                 {t.slug === current.slug && (
-                  <Check size={14} className="text-brand-600" />
+                  <Check size={14} className="text-brand-400" />
                 )}
               </button>
             ))}

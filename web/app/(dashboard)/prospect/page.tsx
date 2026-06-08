@@ -66,7 +66,7 @@ export default async function ProspectListPage() {
                       </Badge>
                     </div>
                     <div className="mt-2 flex items-center gap-2 text-xs text-ink-muted">
-                      <Badge className="bg-slate-100 text-slate-700 capitalize">{c.channel}</Badge>
+                      <Badge className="bg-canvas-surface-2 text-ink capitalize">{c.channel}</Badge>
                       <span>·</span>
                       <span>{c.rate_per_day}/dia</span>
                       {c.ai_refine && (

@@ -105,12 +105,12 @@ export function GoogleCalendarCard({ tenantSlug }: { tenantSlug: string }) {
     <Card>
       <CardHeader className="flex flex-row items-center justify-between gap-3">
         <div className="flex items-center gap-2">
-          <CalendarCheck size={16} className="text-brand-700" />
+          <CalendarCheck size={16} className="text-brand-400" />
           <h2 className="text-sm font-semibold">Google Calendar</h2>
           {status?.connected ? (
-            <Badge className="bg-emerald-100 text-emerald-700">Conectado</Badge>
+            <Badge className="bg-success/15 text-success">Conectado</Badge>
           ) : (
-            <Badge className="bg-slate-100 text-slate-700">Não conectado</Badge>
+            <Badge className="bg-canvas-surface-2 text-ink">Não conectado</Badge>
           )}
         </div>
         <Button variant="ghost" size="icon" onClick={() => void load()} disabled={busy} title="Atualizar status">
@@ -139,7 +139,7 @@ export function GoogleCalendarCard({ tenantSlug }: { tenantSlug: string }) {
               <span className="font-medium">{status.owner_email ?? "Conta Google conectada"}</span>
               <span className="text-ink-muted">Calendário usado</span>
               <select
-                className="h-9 rounded-md border border-line bg-white px-3 text-sm"
+                className="h-9 rounded-md border border-line bg-canvas-surface px-3 text-sm"
                 value={status.calendar_id}
                 disabled={busy || calendars.length === 0}
                 onChange={(e) => void chooseCalendar(e.target.value)}

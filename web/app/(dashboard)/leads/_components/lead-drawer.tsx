@@ -67,14 +67,14 @@ export function LeadDrawer({
                 <Badge
                   className={
                     lead.status === "open"
-                      ? "bg-emerald-100 text-emerald-700"
-                      : "bg-red-100 text-red-700"
+                      ? "bg-success/15 text-success"
+                      : "bg-danger/15 text-danger"
                   }
                 >
                   {lead.status}
                 </Badge>
                 {lead.paused && (
-                  <Badge className="bg-amber-100 text-amber-700">IA pausada</Badge>
+                  <Badge className="bg-warning/15 text-warning">IA pausada</Badge>
                 )}
               </div>
             </div>

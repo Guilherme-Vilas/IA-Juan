@@ -22,7 +22,7 @@ export function SheetContent({
       />
       <DialogPrimitive.Content
         className={cn(
-          "fixed top-0 z-50 h-full w-full max-w-[640px] bg-white shadow-xl",
+          "fixed top-0 z-50 h-full w-full max-w-[640px] bg-canvas-surface shadow-xl",
           "flex flex-col outline-none",
           side === "right" ? "right-0" : "left-0",
           className,
@@ -30,7 +30,7 @@ export function SheetContent({
         {...props}
       >
         {children}
-        <DialogPrimitive.Close className="absolute right-3 top-3 rounded-md p-1 text-ink-muted hover:bg-slate-100">
+        <DialogPrimitive.Close className="absolute right-3 top-3 rounded-md p-1 text-ink-muted hover:bg-canvas-surface-2">
           <X size={18} />
           <span className="sr-only">Fechar</span>
         </DialogPrimitive.Close>

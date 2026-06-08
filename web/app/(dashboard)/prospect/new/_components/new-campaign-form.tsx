@@ -72,8 +72,8 @@ export function NewCampaignForm({ tenantSlug }: { tenantSlug: string }) {
                   onClick={() => setChannel(ch)}
                   className={`flex-1 rounded-md border px-3 py-2 text-sm capitalize ${
                     channel === ch
-                      ? "border-brand-600 bg-brand-50 text-brand-700"
-                      : "border-line bg-white text-ink hover:bg-slate-50"
+                      ? "border-brand-600 bg-brand-600/15 text-brand-300"
+                      : "border-line bg-canvas-surface text-ink hover:bg-canvas-surface"
                   }`}
                 >
                   {ch}
@@ -81,7 +81,7 @@ export function NewCampaignForm({ tenantSlug }: { tenantSlug: string }) {
               ))}
             </div>
             {channel === "linkedin" && (
-              <p className="mt-1 text-xs text-amber-700">
+              <p className="mt-1 text-xs text-warning">
                 LinkedIn: por enquanto modo manual — sistema gera mensagem, você abre o LinkedIn e envia.
               </p>
             )}
@@ -98,10 +98,10 @@ export function NewCampaignForm({ tenantSlug }: { tenantSlug: string }) {
             />
             <p className="mt-1 text-xs text-ink-muted">
               Variáveis disponíveis:{" "}
-              <code className="rounded bg-slate-100 px-1">{`{{nome}}`}</code>{" "}
-              <code className="rounded bg-slate-100 px-1">{`{{primeiro_nome}}`}</code>{" "}
-              <code className="rounded bg-slate-100 px-1">{`{{empresa}}`}</code>{" "}
-              <code className="rounded bg-slate-100 px-1">{`{{cargo}}`}</code>{" "}
+              <code className="rounded bg-canvas-surface-2 px-1">{`{{nome}}`}</code>{" "}
+              <code className="rounded bg-canvas-surface-2 px-1">{`{{primeiro_nome}}`}</code>{" "}
+              <code className="rounded bg-canvas-surface-2 px-1">{`{{empresa}}`}</code>{" "}
+              <code className="rounded bg-canvas-surface-2 px-1">{`{{cargo}}`}</code>{" "}
               · qualquer coluna extra do CSV vira variável também
             </p>
           </div>

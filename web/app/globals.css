@@ -5,15 +5,19 @@
 html,
 body {
   height: 100%;
-  background: theme(colors.canvas.DEFAULT);
+  background:
+    radial-gradient(1200px 600px at 80% -10%, rgba(122, 108, 255, 0.12), transparent 60%),
+    theme(colors.canvas.DEFAULT);
   color: theme(colors.ink.DEFAULT);
   -webkit-font-smoothing: antialiased;
+  font-size: 14px;
 }
 
 * {
   border-color: theme(colors.line.DEFAULT);
 }
 
+/* Scrollbar dark */
 ::-webkit-scrollbar {
   width: 10px;
   height: 10px;
@@ -22,9 +26,26 @@ body {
   background: transparent;
 }
 ::-webkit-scrollbar-thumb {
-  background: #cbd5e1;
+  background: #2a2235;
   border-radius: 6px;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: #94a3b8;
+  background: #3a2f47;
+}
+
+/* Form controls dark */
+input,
+textarea,
+select {
+  color-scheme: dark;
+}
+
+/* Focus visible (acessibilidade) */
+a:focus-visible,
+button:focus-visible,
+input:focus-visible,
+textarea:focus-visible,
+select:focus-visible {
+  outline: 2px solid theme(colors.brand.400);
+  outline-offset: 2px;
 }
