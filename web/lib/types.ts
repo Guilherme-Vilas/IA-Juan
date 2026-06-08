@@ -7,6 +7,7 @@ export type Tenant = {
   name: string;
   evolution_instance: string;
   owner_name: string;
+  playbook_slug: string | null;
   active: boolean;
 };
 
@@ -62,6 +63,9 @@ export type Lead = {
   source: string | null;
   state: LeadState;
   slots: Slots;
+  score: number;
+  score_label: "frio" | "morno" | "quente" | "pronto";
+  score_reasons: string[];
   paused: boolean;
   status: LeadStatus;
   closed_reason: ClosedReason | null;
@@ -86,8 +90,50 @@ export type Appointment = {
   lead_id: number;
   calendar_event_id: string;
   scheduled_at: string;
+  ends_at: string;
+  calendar_provider: "internal" | "google";
   status: string;
   meeting_channel: "ligacao" | "video" | null;
+  created_at: string;
+};
+
+export type WorkingHour = {
+  id: number;
+  tenant_id: number;
+  weekday: number;
+  start_time: string;
+  end_time: string;
+  active: boolean;
+};
+
+export type CalendarBlock = {
+  id: number;
+  tenant_id: number;
+  starts_at: string;
+  ends_at: string;
+  reason: string | null;
+  created_at: string;
+};
+
+export type AgentSettings = {
+  tenant_id: number;
+  agent_name: string;
+  tone: string;
+  products: string[];
+  regions: string[];
+  qualification_rules: string;
+  handoff_rules: string;
+  updated_at: string;
+};
+
+export type PlaybookTemplate = {
+  id: number;
+  slug: string;
+  name: string;
+  segment: string;
+  description: string;
+  default_products: string[];
+  default_rules: string;
   created_at: string;
 };
 

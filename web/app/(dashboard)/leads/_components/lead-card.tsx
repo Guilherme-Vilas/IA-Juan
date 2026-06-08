@@ -5,6 +5,13 @@ import { REASON_LABELS, type Lead } from "@/lib/types";
 import { formatCurrency, formatRelative } from "@/lib/utils";
 import { Pause, Phone, Video, MessageSquare, MapPin } from "lucide-react";
 
+const SCORE_BADGES: Record<Lead["score_label"], string> = {
+  frio: "bg-slate-100 text-slate-700",
+  morno: "bg-amber-100 text-amber-700",
+  quente: "bg-orange-100 text-orange-700",
+  pronto: "bg-emerald-100 text-emerald-700",
+};
+
 export function LeadCard({ lead, onClick }: { lead: Lead; onClick: () => void }) {
   const name = lead.nome ?? lead.slots.nome ?? lead.wa_id;
   const initials = (name || "?")
@@ -36,6 +43,9 @@ export function LeadCard({ lead, onClick }: { lead: Lead; onClick: () => void })
       </div>
 
       <div className="mt-2 flex flex-wrap gap-1">
+        <Badge className={SCORE_BADGES[lead.score_label]}>
+          {lead.score_label} · {lead.score}
+        </Badge>
         {lead.slots.interesse && (
           <Badge className="bg-slate-100 text-slate-700">{lead.slots.interesse}</Badge>
         )}

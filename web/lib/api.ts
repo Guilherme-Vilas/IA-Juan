@@ -91,11 +91,48 @@ export function googleApi(slug: string) {
   return {
     status: () => adminCall(`/admin/tenants/${slug}/google/status`, { method: "GET" }),
     calendars: () => adminCall(`/admin/tenants/${slug}/google/calendars`, { method: "GET" }),
+    diagnostics: () => adminCall(`/admin/tenants/${slug}/google/diagnostics`, { method: "GET" }),
     setCalendar: (calendarId: string) =>
       adminCall(`/admin/tenants/${slug}/google/calendar`, {
         method: "PATCH",
         body: JSON.stringify({ calendar_id: calendarId }),
       }),
     disconnect: () => adminCall(`/admin/tenants/${slug}/google`, { method: "DELETE" }),
+  };
+}
+
+export function calendarApi(slug: string) {
+  return {
+    workingHours: () => adminCall(`/admin/tenants/${slug}/working-hours`, { method: "GET" }),
+    setWorkingHour: (weekday: number, body: Record<string, unknown>) =>
+      adminCall(`/admin/tenants/${slug}/working-hours/${weekday}`, {
+        method: "PATCH",
+        body: JSON.stringify(body),
+      }),
+    blocks: () => adminCall(`/admin/tenants/${slug}/calendar-blocks`, { method: "GET" }),
+    createBlock: (body: Record<string, unknown>) =>
+      adminCall(`/admin/tenants/${slug}/calendar-blocks`, {
+        method: "POST",
+        body: JSON.stringify(body),
+      }),
+    deleteBlock: (id: number) =>
+      adminCall(`/admin/tenants/${slug}/calendar-blocks/${id}`, { method: "DELETE" }),
+  };
+}
+
+export function agentApi(slug: string) {
+  return {
+    get: () => adminCall(`/admin/tenants/${slug}/agent-settings`, { method: "GET" }),
+    update: (body: Record<string, unknown>) =>
+      adminCall(`/admin/tenants/${slug}/agent-settings`, {
+        method: "PATCH",
+        body: JSON.stringify(body),
+      }),
+    playbooks: () => adminCall(`/admin/playbooks`, { method: "GET" }),
+    setPlaybook: (playbookSlug: string) =>
+      adminCall(`/admin/tenants/${slug}/playbook`, {
+        method: "PATCH",
+        body: JSON.stringify({ playbook_slug: playbookSlug }),
+      }),
   };
 }
