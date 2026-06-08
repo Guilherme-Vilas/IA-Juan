@@ -174,6 +174,11 @@ const BROKEN_MINUTES = [15, 25, 40, 50, 35, 20, 45];
 
 export async function listFreeSlots(tenant: TenantRow, daysAhead = 4): Promise<Slot[]> {
   const client = await getClient(tenant);
+  if (!client) {
+    logger.warn({ tenant: tenant.slug }, "calendar not connected; no slots returned");
+    return [];
+  }
+
   const tz = tenant.timezone;
   const duration = tenant.meeting_duration_min;
 
@@ -186,26 +191,25 @@ export async function listFreeSlots(tenant: TenantRow, daysAhead = 4): Promise<S
   });
 
   let busy: Interval[] = [];
-  if (client) {
-    try {
-      const fb = await client.cal.freebusy.query({
-        requestBody: {
-          timeMin: now.toISO()!,
-          timeMax: windowEnd.toISO()!,
-          timeZone: tz,
-          items: [{ id: client.calendarId }],
-        },
-      });
-      const arr = fb.data.calendars?.[client.calendarId]?.busy ?? [];
-      busy = arr
-        .map((b) => {
-          if (!b.start || !b.end) return null;
-          return Interval.fromDateTimes(DateTime.fromISO(b.start), DateTime.fromISO(b.end));
-        })
-        .filter((i): i is Interval => !!i);
-    } catch (err) {
-      logger.warn({ err, tenant: tenant.slug }, "freebusy failed; returning naive slots");
-    }
+  try {
+    const fb = await client.cal.freebusy.query({
+      requestBody: {
+        timeMin: now.toISO()!,
+        timeMax: windowEnd.toISO()!,
+        timeZone: tz,
+        items: [{ id: client.calendarId }],
+      },
+    });
+    const arr = fb.data.calendars?.[client.calendarId]?.busy ?? [];
+    busy = arr
+      .map((b) => {
+        if (!b.start || !b.end) return null;
+        return Interval.fromDateTimes(DateTime.fromISO(b.start), DateTime.fromISO(b.end));
+      })
+      .filter((i): i is Interval => !!i);
+  } catch (err) {
+    logger.warn({ err, tenant: tenant.slug, calendarId: client.calendarId }, "freebusy failed; no slots returned");
+    return [];
   }
 
   const candidates: DateTime[] = [];
@@ -253,8 +257,7 @@ export async function createEvent(
 ): Promise<string> {
   const client = await getClient(tenant);
   if (!client) {
-    logger.warn({ tenant: tenant.slug }, "calendar not configured; returning fake event id");
-    return `fake-${Date.now()}`;
+    throw new Error(`Google Calendar not connected for tenant ${tenant.slug}`);
   }
   const res = await client.cal.events.insert({
     calendarId: client.calendarId,

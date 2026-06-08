@@ -4,6 +4,8 @@ import {
   authUrl,
   authUrlForTenant,
   chooseCalendar,
+  isConfigured,
+  listFreeSlots,
   listUserCalendars,
   saveTokensFromCode,
   saveTokensFromCodeForTenant,
@@ -101,6 +103,44 @@ export async function registerGoogleRoutes(app: FastifyInstance) {
       logger.error({ err, tenant: slug }, "google calendars list failed");
       return reply.code(500).send({ error: String(err) });
     }
+  });
+
+  app.get("/admin/tenants/:slug/google/diagnostics", async (req, reply) => {
+    const { slug } = req.params as { slug: string };
+    const tenant = await getTenantBySlug(slug);
+    if (!tenant) return reply.code(404).send({ error: "tenant not found" });
+
+    const row = await getGoogleTokens(tenant.id);
+    const connected = await isConfigured(tenant);
+    let calendars: Awaited<ReturnType<typeof listUserCalendars>> = [];
+    let slots: Awaited<ReturnType<typeof listFreeSlots>> = [];
+    let calendarsError: string | null = null;
+    let slotsError: string | null = null;
+
+    try {
+      calendars = await listUserCalendars(tenant);
+    } catch (err) {
+      calendarsError = String(err);
+      logger.error({ err, tenant: slug }, "google diagnostics calendars failed");
+    }
+
+    try {
+      slots = await listFreeSlots(tenant, 4);
+    } catch (err) {
+      slotsError = String(err);
+      logger.error({ err, tenant: slug }, "google diagnostics slots failed");
+    }
+
+    return {
+      ok: connected && !calendarsError && !slotsError,
+      connected,
+      owner_email: row?.owner_email ?? null,
+      calendar_id: row?.calendar_id ?? "primary",
+      calendars,
+      slots: slots.slice(0, 6),
+      calendars_error: calendarsError,
+      slots_error: slotsError,
+    };
   });
 
   app.patch("/admin/tenants/:slug/google/calendar", async (req, reply) => {
