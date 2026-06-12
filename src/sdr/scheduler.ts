@@ -63,9 +63,11 @@ export function formatOffer(tenant: TenantRow, slots: Slot[]): string {
     return `Não consegui encontrar horários disponíveis agora na agenda do ${tenant.owner_name}. Tem alguma preferência de dia/horário que te atende melhor?`;
   }
   const lines = slots.map((s, i) => `${i + 1}) ${s.label}`);
+  // Asteriscos SIMPLES — WhatsApp não renderiza *duplo*.
+  // Pergunta de horário PRIMEIRO (separada), canal depois — pra não confundir.
   return (
     `Tenho esses horários disponíveis na agenda do ${tenant.owner_name}:\n\n` +
     lines.join("\n") +
-    "\n\nQual prefere? E me diz também: você prefere **ligação** ou **vídeo chamada**?"
+    "\n\nQual dia e horário fica melhor pra você?"
   );
 }

@@ -13,9 +13,12 @@ import { redis, keys } from "../core/redis.js";
 import { followupQueue, scheduleFollowup, type FollowupJob } from "./queues.js";
 import { requireTenantById } from "../core/tenants.js";
 
-const MSG_STAGE_1 = "Opa, conseguiu ver a mensagem? 👀";
+// Follow-up stage 1: tom mais profissional, sem "opa". Convite curto e direto.
+const MSG_STAGE_1 = "Oi! Conseguiu ver a mensagem? Fico no aguardo do seu retorno 🙌";
+// Follow-up stage 2: convidar a retomar AGORA, sem oferecer "procurar depois"
+// (evita dar pretexto pra postergar — fica sempre como "aberto no aguardo").
 const MSG_STAGE_2 =
-  "Oi! Só pra não te deixar sem resposta: ainda faz sentido a gente seguir essa conversa, ou prefere que eu te procure mais pra frente?";
+  "Oi! Tudo bem? Aproveitando que estou online, conseguimos seguir agora pra eu te apresentar as opções?";
 
 async function pushHistoryAssistant(tenantSlug: string, waId: string, content: string) {
   const k = keys.leadHistory(tenantSlug, waId);
