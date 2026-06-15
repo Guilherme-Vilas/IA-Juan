@@ -187,11 +187,23 @@ services:
       - DATABASE_URL=postgres://ia:${POSTGRES_PASSWORD:-ia}@postgres:5432/ia_juan
       - FASTIFY_BASE_URL=http://app:3000
       - ADMIN_API_TOKEN=${ADMIN_API_TOKEN}
+      - NEXT_PUBLIC_APP_URL=${NEXT_PUBLIC_APP_URL:-https://app.systemvita.com.br}
+      - DASHBOARD_ALLOWED_ORIGINS=${DASHBOARD_ALLOWED_ORIGINS:-app.systemvita.com.br}
     depends_on:
       postgres:
         condition: service_healthy
       app:
         condition: service_started
+
+  # Landing page de marketing (systemvita.com.br) — estatica, sem backend.
+  landing:
+    build: ./landing
+    restart: unless-stopped
+    expose:
+      - "3002"
+    environment:
+      - NODE_ENV=production
+      - NEXT_PUBLIC_APP_URL=${NEXT_PUBLIC_APP_URL:-https://app.systemvita.com.br}
 
 volumes:
   redis-data:
