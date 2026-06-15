@@ -72,7 +72,7 @@ export function NewCampaignForm({ tenantSlug }: { tenantSlug: string }) {
                   onClick={() => setChannel(ch)}
                   className={`flex-1 rounded-md border px-3 py-2 text-sm capitalize ${
                     channel === ch
-                      ? "border-brand-600 bg-brand-600/15 text-brand-300"
+                      ? "border-accent-bronze bg-accent-bronze/15 text-accent-bronze"
                       : "border-line bg-canvas-surface text-ink hover:bg-canvas-surface"
                   }`}
                 >

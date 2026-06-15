@@ -29,7 +29,7 @@ export function TenantSelector({
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
-        className="flex items-center gap-2 rounded-md border border-line bg-canvas-surface-2 px-3 py-1.5 text-sm text-ink transition-colors hover:border-brand-600/40"
+        className="flex items-center gap-2 rounded-md border border-line bg-canvas-surface-2 px-3 py-1.5 text-sm text-ink transition-colors hover:border-accent-bronze/40"
       >
         <Building2 size={14} className="text-ink-muted" />
         <span className="font-medium">{current.name}</span>
@@ -55,7 +55,7 @@ export function TenantSelector({
                   </div>
                 </div>
                 {t.slug === current.slug && (
-                  <Check size={14} className="text-brand-400" />
+                  <Check size={14} className="text-accent-bronze" />
                 )}
               </button>
             ))}

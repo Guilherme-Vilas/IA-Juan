@@ -5,70 +5,74 @@ const config: Config = {
   theme: {
     extend: {
       colors: {
-        // Dark roxo/magenta — identidade Stella SaaS (inspirado IFC Star).
-        brand: {
-          50: "#f1efff",
-          100: "#e3deff",
-          200: "#c9c1ff",
-          300: "#aea2ff",
-          400: "#9d92ff", // primary-2 (claro)
-          500: "#8676ff",
-          600: "#7a6cff", // primary
-          700: "#6354e8",
-          800: "#4f43c0",
-          900: "#3d348f",
-        },
-        accent: {
-          DEFAULT: "#e52862",
-          soft: "#ff5d7d",
-        },
+        // ===== Apple Dark industrial + Claude editorial =====
         canvas: {
-          DEFAULT: "#0a070f",  // bg principal
-          dark: "#0a070f",
-          surface: "#140f1d",   // cards / sidebar
-          "surface-2": "#1b1526", // hover / chips
-        },
-        ink: {
-          DEFAULT: "#f4f2f8",
-          muted: "#8b8595",
-          faint: "#5c5668",
-          inverse: "#0a070f",
+          DEFAULT: "#0A0A0C", // background principal — cinza quase preto, denso
+          deep: "#0D0D10",
+          surface: "#16161A", // cards / containers (elevação)
+          "surface-2": "#1C1C21", // hover / camada superior
+          glass: "rgba(22,22,26,0.7)", // vidro (backdrop-blur)
         },
         line: {
-          DEFAULT: "#2a2235",
-          strong: "#3a2f47",
+          DEFAULT: "#232329", // bordas ultra-finas
+          strong: "#2E2E38",
         },
-        // status colors
-        success: "#32cc7e",
-        warn: "#ffac48",
-        warning: "#ffac48",
-        danger: "#ff5d7d",
-        info: "#43bdde",
+        ink: {
+          DEFAULT: "#E6E6E6", // texto principal — branco gelo
+          soft: "#A1A1AA",
+          muted: "#71717A", // texto de suporte
+          faint: "#52525B",
+          inverse: "#0A0A0C",
+        },
+        // Acento: branco gelo (botão primário Apple) + bronze escovado (requinte Claude)
+        accent: {
+          DEFAULT: "#E6E6E6",
+          bronze: "#B08D57", // ouro velho / bronze escovado, sóbrio
+          "bronze-soft": "#C9A876",
+        },
+        // status — saturação contida pra não competir com o tema sóbrio
+        success: "#4ADE80",
+        warning: "#FBBF24",
+        danger: "#F87171",
+        info: "#60A5FA",
       },
       fontFamily: {
+        // Sans geométrica pra dados/UI (pegada Apple)
         sans: [
           "var(--font-inter)",
-          "Inter",
           "-apple-system",
           "BlinkMacSystemFont",
           "Segoe UI",
           "Roboto",
           "sans-serif",
         ],
+        // Serif editorial pra títulos (pegada Claude/Anthropic)
+        serif: ["var(--font-serif)", "Newsreader", "Georgia", "Cambria", "serif"],
       },
-      boxShadow: {
-        card: "0 1px 2px 0 rgb(0 0 0 / 0.25), 0 1px 3px 0 rgb(0 0 0 / 0.35)",
-        elevated: "0 8px 30px rgba(0,0,0,.35)",
-        glow: "0 0 0 1px rgba(122,108,255,.35)",
+      fontSize: {
+        // títulos serif respiram mais
+        "display-lg": ["2.25rem", { lineHeight: "1.1", letterSpacing: "-0.02em" }],
+        "display": ["1.75rem", { lineHeight: "1.15", letterSpacing: "-0.015em" }],
       },
       borderRadius: {
-        lg: "14px",
+        // cards generosos (Apple), inputs/botões sóbrios
+        xl: "16px",
+        lg: "12px",
+        md: "8px",
+      },
+      boxShadow: {
+        card: "0 1px 0 0 rgba(255,255,255,0.02) inset, 0 1px 2px rgba(0,0,0,0.4)",
+        elevated: "0 12px 40px rgba(0,0,0,0.5)",
+        glass: "0 8px 32px rgba(0,0,0,0.45)",
+      },
+      backdropBlur: {
+        glass: "20px",
       },
       backgroundImage: {
-        "primary-gradient": "linear-gradient(135deg,#7a6cff,#e52862)",
-        "nav-active": "linear-gradient(90deg,rgba(122,108,255,.22),rgba(229,40,98,.10))",
+        // brilho sutil, frio (não colorido) — profundidade sem pirotecnia
         "page-glow":
-          "radial-gradient(1200px 600px at 80% -10%, rgba(122,108,255,.12), transparent 60%)",
+          "radial-gradient(900px 500px at 85% -15%, rgba(255,255,255,0.035), transparent 60%)",
+        "bronze-line": "linear-gradient(90deg, transparent, rgba(176,141,87,0.4), transparent)",
       },
     },
   },

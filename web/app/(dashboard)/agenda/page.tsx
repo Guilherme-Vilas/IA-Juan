@@ -101,7 +101,7 @@ export default async function AgendaPage() {
               {list.map((a) => (
                 <div key={a.id} className="flex items-center gap-3 py-2">
                   <div className="w-16 text-center">
-                    <div className="text-lg font-semibold text-brand-400">
+                    <div className="text-lg font-semibold text-accent-bronze">
                       {new Date(a.scheduled_at).toLocaleTimeString("pt-BR", {
                         hour: "2-digit",
                         minute: "2-digit",

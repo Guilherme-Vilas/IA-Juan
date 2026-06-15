@@ -3,22 +3,23 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
-  Users,
+  LayoutDashboard,
   Calendar,
   BarChart3,
   Settings,
   Inbox,
   Send,
-  LayoutDashboard,
+  Server,
+  BookOpen,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
-type NavItem = { href: string; label: string; icon: typeof Users };
+type NavItem = { href: string; label: string; icon: typeof LayoutDashboard };
 type NavGroup = { label?: string; items: NavItem[] };
 
 const groups: NavGroup[] = [
   {
-    items: [{ href: "/leads", label: "Leads", icon: LayoutDashboard }],
+    items: [{ href: "/leads", label: "Visão geral", icon: LayoutDashboard }],
   },
   {
     label: "Operação",
@@ -33,35 +34,37 @@ const groups: NavGroup[] = [
     items: [{ href: "/metrics", label: "Métricas", icon: BarChart3 }],
   },
   {
-    label: "Sistema",
-    items: [{ href: "/settings", label: "Config", icon: Settings }],
+    label: "Plataforma",
+    items: [
+      { href: "/tenants", label: "Instâncias", icon: Server },
+      { href: "/playbooks", label: "Playbooks", icon: BookOpen },
+      { href: "/settings", label: "Configurações", icon: Settings },
+    ],
   },
 ];
 
 export function Sidebar() {
   const pathname = usePathname();
   return (
-    <aside
-      className="flex h-full w-[248px] shrink-0 flex-col overflow-y-auto bg-gradient-to-b from-canvas-surface to-[#100b18] px-3.5 py-5 text-ink"
-      style={{ borderRight: "1px solid #2a2235" }}
-    >
-      {/* Brand */}
-      <div className="flex items-center gap-2.5 px-2 pb-5">
-        <div className="grid h-8 w-8 place-items-center rounded-lg bg-primary-gradient text-sm font-bold text-white">
-          S
+    <aside className="flex h-full w-[244px] shrink-0 flex-col border-r border-line bg-canvas-deep px-3 py-5">
+      {/* Marca — serifada (Claude) */}
+      <div className="flex items-center gap-2.5 px-2 pb-6">
+        <div className="grid h-7 w-7 place-items-center rounded-md border border-line bg-canvas-surface">
+          <span className="font-serif text-sm text-ink">S</span>
         </div>
-        <span className="text-base font-bold tracking-tight text-ink">Stella</span>
-        <span className="ml-1 rounded-md bg-brand-600/15 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-widest text-brand-400">
-          SaaS
-        </span>
+        <div className="leading-none">
+          <div className="font-serif text-[15px] text-ink">Stella</div>
+          <div className="mt-0.5 text-[10px] uppercase tracking-[0.15em] text-ink-faint">
+            Platform
+          </div>
+        </div>
       </div>
 
-      {/* Nav groups */}
-      <nav className="flex flex-1 flex-col gap-1">
+      <nav className="flex flex-1 flex-col gap-0.5">
         {groups.map((group, gi) => (
-          <div key={gi}>
+          <div key={gi} className="mb-1">
             {group.label && (
-              <div className="px-3 pb-1.5 pt-3.5 text-[11px] font-semibold uppercase tracking-[1.2px] text-ink-faint">
+              <div className="px-2.5 pb-1 pt-4 text-[10px] font-medium uppercase tracking-[0.12em] text-ink-faint">
                 {group.label}
               </div>
             )}
@@ -72,13 +75,13 @@ export function Sidebar() {
                   key={href}
                   href={href}
                   className={cn(
-                    "mx-0 flex items-center gap-3 rounded-[10px] px-3 py-2.5 text-sm font-medium transition-all",
+                    "flex items-center gap-2.5 rounded-md px-2.5 py-2 text-[13px] transition-colors",
                     active
-                      ? "bg-nav-active text-white shadow-glow"
-                      : "text-ink-muted hover:bg-canvas-surface-2 hover:text-ink",
+                      ? "bg-canvas-surface text-ink"
+                      : "text-ink-muted hover:bg-canvas-surface/60 hover:text-ink",
                   )}
                 >
-                  <Icon size={17} className={active ? "opacity-100" : "opacity-80"} />
+                  <Icon size={16} strokeWidth={1.75} className={active ? "text-ink" : "text-ink-muted"} />
                   {label}
                 </Link>
               );
@@ -87,18 +90,16 @@ export function Sidebar() {
         ))}
       </nav>
 
-      {/* Footer */}
-      <div className="mt-3 border-t border-line pt-3.5">
-        <div className="flex items-center gap-2.5 rounded-[10px] bg-canvas-surface-2 px-2.5 py-2">
-          <div className="grid h-8 w-8 flex-none place-items-center rounded-lg bg-primary-gradient text-sm font-bold text-canvas">
+      <div className="mt-2 border-t border-line pt-3">
+        <div className="flex items-center gap-2.5 px-1.5">
+          <div className="grid h-7 w-7 place-items-center rounded-md border border-line bg-canvas-surface text-[11px] font-semibold text-ink">
             J
           </div>
-          <div className="min-w-0 flex-1 overflow-hidden leading-tight">
-            <div className="truncate text-[13px] font-semibold text-ink">Juan Monteiro</div>
-            <div className="text-[11px] text-ink-muted">Admin</div>
+          <div className="min-w-0 leading-tight">
+            <div className="truncate text-[12px] text-ink">Juan Monteiro</div>
+            <div className="text-[10px] text-ink-faint">Administrador</div>
           </div>
         </div>
-        <div className="mt-3 text-[11px] text-ink-faint">powered by stella.ai</div>
       </div>
     </aside>
   );

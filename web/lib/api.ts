@@ -17,6 +17,11 @@ export async function adminCall(path: string, init?: RequestInit) {
   return res.json();
 }
 
+// Tenants — listagem (server). Provisionamento é client-side via admin-proxy (QR no browser).
+export const tenantsApi = {
+  list: () => adminCall(`/admin/tenants`, { method: "GET" }),
+};
+
 // Leads — agora todos os endpoints sao per-tenant
 export function leadActionsApi(slug: string) {
   return {

@@ -92,7 +92,7 @@ export function AgentSettingsForm({
       <Card>
         <CardHeader className="flex flex-row items-center justify-between gap-3">
           <div className="flex items-center gap-2">
-            <Bot size={16} className="text-brand-400" />
+            <Bot size={16} className="text-accent-bronze" />
             <h2 className="text-sm font-semibold">Configuração do agente</h2>
           </div>
           <Button onClick={() => void save()} disabled={busy}>
@@ -157,7 +157,7 @@ export function AgentSettingsForm({
       <Card>
         <CardHeader>
           <div className="flex items-center gap-2">
-            <BookOpen size={16} className="text-brand-400" />
+            <BookOpen size={16} className="text-accent-bronze" />
             <h2 className="text-sm font-semibold">Playbook</h2>
           </div>
         </CardHeader>

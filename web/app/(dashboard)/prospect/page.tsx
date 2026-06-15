@@ -32,7 +32,7 @@ export default async function ProspectListPage() {
         action={
           <Link
             href="/prospect/new"
-            className="inline-flex h-9 items-center gap-2 rounded-md bg-brand-600 px-4 text-sm font-medium text-white hover:bg-brand-700"
+            className="inline-flex h-9 items-center gap-2 rounded-md bg-accent-bronze px-4 text-sm font-medium text-white hover:bg-accent-bronze"
           >
             <Plus size={14} /> Nova campanha
           </Link>

@@ -94,7 +94,7 @@ function Bubble({ m }: { m: Message }) {
     <div className={`flex ${isOut ? "justify-end" : "justify-start"}`}>
       <div
         className={`max-w-[78%] rounded-2xl px-3 py-2 text-sm ${
-          isOut ? "bg-brand-600 text-white" : "bg-canvas-surface border border-line text-ink"
+          isOut ? "bg-accent-bronze text-white" : "bg-canvas-surface border border-line text-ink"
         }`}
       >
         <div className="whitespace-pre-wrap">{m.content}</div>

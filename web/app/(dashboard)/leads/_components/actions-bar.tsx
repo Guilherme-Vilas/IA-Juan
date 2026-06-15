@@ -63,7 +63,7 @@ export function ActionsBar({ lead, onAction }: { lead: Lead; onAction: () => voi
       <a
         href={`https://wa.me/${lead.wa_id}`}
         target="_blank"
-        className="ml-auto inline-flex items-center gap-1 text-xs text-brand-600 hover:underline"
+        className="ml-auto inline-flex items-center gap-1 text-xs text-accent-bronze hover:underline"
       >
         <Phone size={12} /> Abrir no WhatsApp
       </a>

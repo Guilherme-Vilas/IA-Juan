@@ -111,7 +111,7 @@ function Stat({ label, value, accent }: { label: string; value: number; accent?:
   return (
     <Card>
       <CardBody>
-        <div className={`text-2xl font-bold ${accent ? "text-brand-600" : "text-ink"}`}>
+        <div className={`text-2xl font-bold ${accent ? "text-accent-bronze" : "text-ink"}`}>
           {value}
         </div>
         <div className="text-xs uppercase text-ink-muted">{label}</div>

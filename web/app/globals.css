@@ -6,10 +6,11 @@ html,
 body {
   height: 100%;
   background:
-    radial-gradient(1200px 600px at 80% -10%, rgba(122, 108, 255, 0.12), transparent 60%),
+    radial-gradient(900px 500px at 85% -15%, rgba(255, 255, 255, 0.035), transparent 60%),
     theme(colors.canvas.DEFAULT);
   color: theme(colors.ink.DEFAULT);
   -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
   font-size: 14px;
 }
 
@@ -17,35 +18,50 @@ body {
   border-color: theme(colors.line.DEFAULT);
 }
 
-/* Scrollbar dark */
+/* Títulos com serifa editorial (pegada Claude) */
+h1,
+h2,
+h3,
+.font-display {
+  font-family: theme(fontFamily.serif);
+  letter-spacing: -0.01em;
+}
+
+/* Scrollbar discreta */
 ::-webkit-scrollbar {
-  width: 10px;
-  height: 10px;
+  width: 9px;
+  height: 9px;
 }
 ::-webkit-scrollbar-track {
   background: transparent;
 }
 ::-webkit-scrollbar-thumb {
-  background: #2a2235;
+  background: #232329;
   border-radius: 6px;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: #3a2f47;
+  background: #2e2e38;
 }
 
-/* Form controls dark */
 input,
 textarea,
 select {
   color-scheme: dark;
 }
 
-/* Focus visible (acessibilidade) */
+/* Foco sóbrio — anel branco gelo translúcido */
 a:focus-visible,
 button:focus-visible,
 input:focus-visible,
 textarea:focus-visible,
 select:focus-visible {
-  outline: 2px solid theme(colors.brand.400);
+  outline: 1px solid rgba(230, 230, 230, 0.5);
   outline-offset: 2px;
+}
+
+/* Utilitário de vidro (macOS) */
+.glass {
+  background: theme(colors.canvas.glass);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
 }

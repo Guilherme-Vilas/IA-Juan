@@ -105,7 +105,7 @@ export function GoogleCalendarCard({ tenantSlug }: { tenantSlug: string }) {
     <Card>
       <CardHeader className="flex flex-row items-center justify-between gap-3">
         <div className="flex items-center gap-2">
-          <CalendarCheck size={16} className="text-brand-400" />
+          <CalendarCheck size={16} className="text-accent-bronze" />
           <h2 className="text-sm font-semibold">Google Calendar</h2>
           {status?.connected ? (
             <Badge className="bg-success/15 text-success">Conectado</Badge>

@@ -11,13 +11,16 @@ export function Badge({
   return (
     <span
       className={cn(
-        "inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-[11px] font-bold tracking-wide",
-        // default neutro dark — sobrescreve com className quando precisa
-        "bg-canvas-surface-2 text-ink-muted",
+        "inline-flex items-center gap-1 rounded-md border border-line bg-canvas-surface-2 px-2 py-0.5 text-[11px] font-medium text-ink-muted",
         className,
       )}
     >
       {children}
     </span>
   );
+}
+
+// Indicador de status com ponto colorido (estilo Linear/Vercel)
+export function StatusDot({ className }: { className?: string }) {
+  return <span className={cn("inline-block h-1.5 w-1.5 rounded-full", className)} />;
 }

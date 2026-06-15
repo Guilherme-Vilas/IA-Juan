@@ -23,10 +23,10 @@ export function LeadCard({ lead, onClick }: { lead: Lead; onClick: () => void })
   return (
     <button
       onClick={onClick}
-      className="group rounded-md border border-line bg-canvas-surface p-3 text-left text-sm shadow-sm hover:border-brand-300 hover:shadow-md"
+      className="group rounded-md border border-line bg-canvas-surface p-3 text-left text-sm shadow-sm hover:border-line-strong hover:shadow-md"
     >
       <div className="flex items-start gap-2">
-        <div className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-brand-100 text-xs font-semibold text-brand-400">
+        <div className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-canvas-surface-2 text-xs font-semibold text-accent-bronze">
           {initials}
         </div>
         <div className="min-w-0 flex-1">

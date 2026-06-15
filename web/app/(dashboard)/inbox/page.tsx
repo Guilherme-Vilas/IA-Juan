@@ -66,7 +66,7 @@ export default async function InboxPage() {
               const Icon = r.icon;
               return (
                 <Link key={lead.id} href="/leads" className="flex items-center gap-3 py-3 text-sm hover:bg-canvas-surface">
-                  <div className="grid h-9 w-9 place-items-center rounded-full bg-brand-100 font-semibold text-brand-400">
+                  <div className="grid h-9 w-9 place-items-center rounded-full bg-canvas-surface-2 font-semibold text-accent-bronze">
                     {(lead.nome ?? lead.slots.nome ?? lead.wa_id).slice(0, 1).toUpperCase()}
                   </div>
                   <div className="min-w-0 flex-1">
