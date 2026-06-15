@@ -20,8 +20,8 @@ const serif = Newsreader({
 });
 
 export const metadata: Metadata = {
-  title: "Stella · SaaS de Atendimento",
-  description: "Plataforma de atendimento e vendas — imobiliárias e consórcios",
+  title: "Vita OS · Atendimento e Vendas com IA",
+  description: "Plataforma de atendimento e vendas com IA — imobiliárias e consórcios",
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

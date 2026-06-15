@@ -13,6 +13,7 @@ import {
   BookOpen,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { LogoMark } from "@/components/ui/logo";
 
 type NavItem = { href: string; label: string; icon: typeof LayoutDashboard };
 type NavGroup = { label?: string; items: NavItem[] };
@@ -47,13 +48,11 @@ export function Sidebar() {
   const pathname = usePathname();
   return (
     <aside className="flex h-full w-[244px] shrink-0 flex-col border-r border-line bg-canvas-deep px-3 py-5">
-      {/* Marca — serifada (Claude) */}
+      {/* Marca — Vita OS */}
       <div className="flex items-center gap-2.5 px-2 pb-6">
-        <div className="grid h-7 w-7 place-items-center rounded-md border border-line bg-canvas-surface">
-          <span className="font-serif text-sm text-ink">S</span>
-        </div>
+        <LogoMark className="h-8 w-8 border border-line" />
         <div className="leading-none">
-          <div className="font-serif text-[15px] text-ink">Stella</div>
+          <div className="font-serif text-[15px] text-ink">Vita OS</div>
           <div className="mt-0.5 text-[10px] uppercase tracking-[0.15em] text-ink-faint">
             Platform
           </div>

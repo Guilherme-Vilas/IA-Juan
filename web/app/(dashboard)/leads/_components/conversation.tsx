@@ -59,9 +59,9 @@ export function Conversation({
 
       <div className="border-t border-line pb-4 pt-3">
         {!lead.paused && (
-          <div className="mb-2 flex items-center gap-1 text-xs text-warn">
+          <div className="mb-2 flex items-center gap-1 text-xs text-warning">
             <AlertCircle size={12} />
-            Enviar manualmente pausa a Stella automaticamente.
+            Enviar manualmente pausa a IA automaticamente.
           </div>
         )}
         <div className="flex items-end gap-2">

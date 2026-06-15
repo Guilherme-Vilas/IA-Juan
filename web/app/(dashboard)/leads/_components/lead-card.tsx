@@ -33,7 +33,7 @@ export function LeadCard({ lead, onClick }: { lead: Lead; onClick: () => void })
           <div className="flex items-center justify-between gap-2">
             <span className="truncate font-medium text-ink">{name}</span>
             {lead.paused && (
-              <span title="IA pausada" className="text-warn">
+              <span title="IA pausada" className="text-warning">
                 <Pause size={14} />
               </span>
             )}
