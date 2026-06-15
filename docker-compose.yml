@@ -129,6 +129,7 @@ services:
       - ./web/app:/app/app
       - ./web/components:/app/components
       - ./web/lib:/app/lib
+      - ./web/public:/app/public
     depends_on:
       postgres:
         condition: service_healthy

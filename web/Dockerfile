@@ -13,6 +13,7 @@ RUN npm install --include=dev --no-audit --no-fund
 COPY app ./app
 COPY components ./components
 COPY lib ./lib
+COPY public ./public
 
 EXPOSE 3001
 
