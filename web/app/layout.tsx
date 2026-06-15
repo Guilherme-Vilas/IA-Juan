@@ -20,8 +20,10 @@ const serif = Newsreader({
 });
 
 export const metadata: Metadata = {
+  metadataBase: new URL(process.env.NEXT_PUBLIC_APP_URL ?? "https://app.systemvita.com.br"),
   title: "Vita OS · Atendimento e Vendas com IA",
   description: "Plataforma de atendimento e vendas com IA — imobiliárias e consórcios",
+  icons: { icon: "/icon.png" },
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

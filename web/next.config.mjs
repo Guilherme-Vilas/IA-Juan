@@ -17,7 +17,15 @@ const nextConfig = {
     return config;
   },
   experimental: {
-    serverActions: { allowedOrigins: ["localhost:3001"] },
+    // Origens permitidas para Server Actions. Inclui o dominio de producao.
+    // Configuravel via DASHBOARD_ALLOWED_ORIGINS (CSV) sem rebuild de codigo.
+    serverActions: {
+      allowedOrigins: [
+        "localhost:3001",
+        "app.systemvita.com.br",
+        ...(process.env.DASHBOARD_ALLOWED_ORIGINS?.split(",").map((s) => s.trim()).filter(Boolean) ?? []),
+      ],
+    },
   },
 };
 
