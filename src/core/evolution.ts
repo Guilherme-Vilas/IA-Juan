@@ -9,6 +9,79 @@ const client: AxiosInstance = axios.create({
   timeout: 15000,
 });
 
+// ===== Provisionamento (onboarding) =====
+// Cria a instancia no Evolution e ja configura o webhook global do app.
+// Retorna o QR code em base64 pro painel renderizar.
+export type ProvisionResult = {
+  instanceName: string;
+  qrBase64: string | null;
+  pairingCode: string | null;
+  alreadyExists: boolean;
+};
+
+export async function createEvolutionInstance(instanceName: string): Promise<ProvisionResult> {
+  const webhookUrl = `${config.EVOLUTION_INTERNAL_WEBHOOK_URL}?token=${config.EVOLUTION_WEBHOOK_TOKEN}`;
+  try {
+    const res = await client.post<{
+      instance?: { instanceName?: string };
+      qrcode?: { base64?: string; code?: string; pairingCode?: string };
+    }>("/instance/create", {
+      instanceName,
+      qrcode: true,
+      integration: "WHATSAPP-BAILEYS",
+      webhook: {
+        url: webhookUrl,
+        webhookByEvents: false,
+        base64: false,
+        events: ["MESSAGES_UPSERT", "CONNECTION_UPDATE"],
+      },
+    });
+    const qr = res.data?.qrcode;
+    return {
+      instanceName,
+      qrBase64: qr?.base64 ?? null,
+      pairingCode: qr?.pairingCode ?? qr?.code ?? null,
+      alreadyExists: false,
+    };
+  } catch (err) {
+    const e = err as { response?: { status?: number } };
+    // 403/409 = instancia ja existe — tenta so garantir o webhook e devolver QR atual.
+    if (e.response?.status === 403 || e.response?.status === 409) {
+      logger.warn({ instanceName }, "evolution: instance already exists, ensuring webhook");
+      await setInstanceWebhook(instanceName).catch(() => undefined);
+      const qr = await connectInstance(instanceName).catch(() => null);
+      return { instanceName, qrBase64: qr?.base64 ?? null, pairingCode: qr?.code ?? null, alreadyExists: true };
+    }
+    logger.error({ err, instanceName }, "evolution.createInstance failed");
+    throw err;
+  }
+}
+
+export async function setInstanceWebhook(instanceName: string): Promise<void> {
+  const webhookUrl = `${config.EVOLUTION_INTERNAL_WEBHOOK_URL}?token=${config.EVOLUTION_WEBHOOK_TOKEN}`;
+  await client.post(`/webhook/set/${instanceName}`, {
+    webhook: {
+      enabled: true,
+      url: webhookUrl,
+      webhookByEvents: false,
+      base64: false,
+      events: ["MESSAGES_UPSERT", "CONNECTION_UPDATE"],
+    },
+  });
+}
+
+export async function connectInstance(
+  instanceName: string,
+): Promise<{ base64?: string; code?: string } | null> {
+  try {
+    const res = await client.get<{ base64?: string; code?: string }>(`/instance/connect/${instanceName}`);
+    return res.data ?? null;
+  } catch (err) {
+    logger.warn({ err, instanceName }, "evolution.connect failed");
+    return null;
+  }
+}
+
 export async function sendText(tenant: TenantRow, waId: string, text: string): Promise<void> {
   if (config.SIMULATOR_MODE) {
     logger.debug({ tenant: tenant.slug, waId, len: text.length }, "sendText suppressed (SIMULATOR_MODE)");

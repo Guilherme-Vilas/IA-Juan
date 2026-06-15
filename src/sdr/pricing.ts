@@ -39,21 +39,25 @@ export type PricingLookup =
   | { ok: true; row: PricingRow; formatted: string }
   | { ok: false; reason: string };
 
-export function lookupPricing(valorCarta: number, tipo?: PricingTipo): PricingLookup {
+// Recebe a tabela de pricing do PLAYBOOK (vinda do banco). Sem tabela = sem cotacao.
+// Mantem PRICING_TABLE so como fallback de compatibilidade.
+export function lookupPricing(
+  valorCarta: number,
+  tipo?: PricingTipo,
+  table: PricingRow[] = PRICING_TABLE,
+): PricingLookup {
   if (!Number.isFinite(valorCarta) || valorCarta <= 0) {
     return { ok: false, reason: "valor_invalido" };
   }
-  const candidates = PRICING_TABLE.filter(
-    (r) => r.carta_min <= valorCarta && valorCarta <= r.carta_max,
-  );
+  if (!table.length) return { ok: false, reason: "sem_tabela" };
+  const candidates = table.filter((r) => r.carta_min <= valorCarta && valorCarta <= r.carta_max);
   const row = (tipo && candidates.find((r) => r.tipo === tipo)) || candidates[0];
   if (!row) return { ok: false, reason: "fora_da_tabela" };
 
-  const fmt = (n: number) =>
-    n.toLocaleString("pt-BR", { maximumFractionDigits: 0 });
+  const fmt = (n: number) => n.toLocaleString("pt-BR", { maximumFractionDigits: 0 });
   const formatted =
     `Carta de R$ ${fmt(valorCarta)} (${row.tipo}) — parcela aproximada entre ` +
     `R$ ${fmt(row.parcela_min)} e R$ ${fmt(row.parcela_max)}/mês em ${row.prazo_meses} meses ` +
-    `(estimativa; valor exato é com o Juan).`;
+    `(estimativa; valor exato é com o especialista).`;
   return { ok: true, row, formatted };
 }

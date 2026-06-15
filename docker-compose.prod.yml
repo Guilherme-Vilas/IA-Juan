@@ -119,20 +119,62 @@ services:
 
       - SIMULATOR_MODE=${SIMULATOR_MODE:-false}
 
+      - JWT_SECRET=${JWT_SECRET}
+      - JWT_EXPIRES_IN=${JWT_EXPIRES_IN:-12h}
+      - SEED_ADMIN_EMAIL=${SEED_ADMIN_EMAIL:-}
+      - SEED_ADMIN_PASSWORD=${SEED_ADMIN_PASSWORD:-}
+
       - GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID:-}
       - GOOGLE_CLIENT_SECRET=${GOOGLE_CLIENT_SECRET:-}
       - GOOGLE_REDIRECT_URI=${GOOGLE_REDIRECT_URI:-}
-      - GOOGLE_OAUTH_STATE_SECRET=${GOOGLE_OAUTH_STATE_SECRET:-}
+      - GOOGLE_OAUTH_STATE_SECRET=${GOOGLE_OAUTH_STATE_SECRET}
       - GOOGLE_CALENDAR_ID=${GOOGLE_CALENDAR_ID:-primary}
-      - GOOGLE_TOKENS_PATH=/app/.tokens/google.json
-    volumes:
-      - tokens-data:/app/.tokens
+      # Tokens Google agora vivem 100% no Postgres (tabela tenant_google_tokens).
+      # Sem volume/arquivo — stateless e consistente entre réplicas.
     depends_on:
       redis:
         condition: service_healthy
       postgres:
         condition: service_healthy
       evolution:
+        condition: service_started
+
+  # Processo de WORKERS — separado da API (escala e falha de forma independente).
+  worker:
+    build: .
+    restart: unless-stopped
+    command: ["sh", "-c", "npx tsx src/workers.ts"]
+    environment:
+      - NODE_ENV=production
+      - LOG_LEVEL=info
+      - REDIS_URL=redis://redis:6379
+      - DATABASE_URL=postgres://ia:${POSTGRES_PASSWORD:-ia}@postgres:5432/ia_juan
+      - EVOLUTION_BASE_URL=http://evolution:8080
+      - EVOLUTION_API_KEY=${EVOLUTION_API_KEY}
+      - EVOLUTION_WEBHOOK_TOKEN=${EVOLUTION_WEBHOOK_TOKEN}
+      - EVOLUTION_INTERNAL_WEBHOOK_URL=http://app:3000/webhook/evolution
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - OPENAI_MODEL_MAIN=${OPENAI_MODEL_MAIN:-gpt-4o-mini}
+      - OPENAI_MODEL_FAST=${OPENAI_MODEL_FAST:-gpt-4o-mini}
+      - OPENAI_MODEL_AUDIO=${OPENAI_MODEL_AUDIO:-whisper-1}
+      - ADMIN_API_TOKEN=${ADMIN_API_TOKEN}
+      - JWT_SECRET=${JWT_SECRET}
+      - GOOGLE_OAUTH_STATE_SECRET=${GOOGLE_OAUTH_STATE_SECRET}
+      - PUBLIC_BASE_URL=${PUBLIC_BASE_URL}
+      - DEBOUNCE_MS=${DEBOUNCE_MS:-5000}
+      - LEAD_STATE_TTL_SECONDS=${LEAD_STATE_TTL_SECONDS:-604800}
+      - FOLLOWUP_1_MS=${FOLLOWUP_1_MS:-900000}
+      - FOLLOWUP_2_MS=${FOLLOWUP_2_MS:-86400000}
+      - FOLLOWUP_CLOSE_MS=${FOLLOWUP_CLOSE_MS:-86400000}
+      - SIMULATOR_MODE=${SIMULATOR_MODE:-false}
+      - PROSPECT_TICK_MS=${PROSPECT_TICK_MS:-300000}
+      - PROSPECT_JITTER_MS=${PROSPECT_JITTER_MS:-600000}
+    depends_on:
+      redis:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+      app:
         condition: service_started
 
   web:
@@ -155,4 +197,3 @@ volumes:
   redis-data:
   pg-data:
   evolution-data:
-  tokens-data:

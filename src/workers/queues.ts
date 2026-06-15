@@ -27,10 +27,37 @@ export type RetryTurnJob = {
   attempt: number; // 1..3
 };
 
+// Tick periodico de prospeccao — repeatable job (substitui setInterval in-process).
+// Idempotente entre replicas: o BullMQ garante 1 disparo por janela mesmo com N workers.
+export type ProspectTickJob = Record<string, never>;
+
 export const inboundQueue = new Queue<InboundJob>("inbound", bullConnection);
 export const followupQueue = new Queue<FollowupJob>("followup", bullConnection);
 export const prospectSendQueue = new Queue<ProspectSendJob>("prospect-send", bullConnection);
+export const prospectTickQueue = new Queue<ProspectTickJob>("prospect-tick", bullConnection);
 export const retryTurnQueue = new Queue<RetryTurnJob>("retry-turn", bullConnection);
+
+// Registra o repeatable job do tick. Chamar uma vez no boot do processo de workers.
+// `jobId` fixo + repeat garante que so existe 1 schedule, mesmo com varias replicas.
+export async function ensureProspectTickScheduled(everyMs: number) {
+  // Limpa schedulers antigos pra evitar duplicatas se o intervalo mudou.
+  const repeatables = await prospectTickQueue.getRepeatableJobs().catch(() => []);
+  for (const r of repeatables) {
+    if (r.id === "prospect-tick") {
+      await prospectTickQueue.removeRepeatableByKey(r.key).catch(() => undefined);
+    }
+  }
+  await prospectTickQueue.add(
+    "tick",
+    {},
+    {
+      jobId: "prospect-tick",
+      repeat: { every: everyMs },
+      removeOnComplete: true,
+      removeOnFail: 20,
+    },
+  );
+}
 
 export function debounceJobId(tenantId: number, waId: string): string {
   return `debounce-${tenantId}-${waId}`;

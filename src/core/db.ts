@@ -2,7 +2,14 @@ import pg from "pg";
 import { config } from "../config.js";
 import { calculateLeadScore } from "./lead-score.js";
 
-export const pool = new pg.Pool({ connectionString: config.DATABASE_URL });
+// Limite explicito de conexoes por processo. API e worker rodam em processos
+// separados, cada um com seu pool — manter `max` baixo evita esgotar o Postgres.
+export const pool = new pg.Pool({
+  connectionString: config.DATABASE_URL,
+  max: config.PG_POOL_MAX,
+  idleTimeoutMillis: 30_000,
+  connectionTimeoutMillis: 10_000,
+});
 
 export type LeadState =
   | "S0_ABERTURA"

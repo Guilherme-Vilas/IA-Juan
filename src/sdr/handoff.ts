@@ -38,7 +38,9 @@ function formatSlots(slots: LeadRow["slots"]): string {
   return lines.length ? lines.join("\n") : "(sem dados coletados)";
 }
 
-export async function notifyJuan(tenant: TenantRow, lead: LeadRow, motivo: string) {
+// Notifica o owner do tenant (corretor/dono) de um handoff. Nome generico — sem
+// branding de cliente especifico.
+export async function executeHandoff(tenant: TenantRow, lead: LeadRow, motivo: string) {
   const text =
     `🔔 *Handoff SDR — ${tenant.name}*\n` +
     `Lead: ${lead.nome ?? "(sem nome)"} — wa.me/${lead.wa_id}\n` +
@@ -47,7 +49,7 @@ export async function notifyJuan(tenant: TenantRow, lead: LeadRow, motivo: strin
   try {
     await sendText(tenant, tenant.owner_whatsapp_e164, text);
   } catch (err) {
-    logger.error({ err, tenant: tenant.slug }, "notifyJuan failed");
+    logger.error({ err, tenant: tenant.slug }, "executeHandoff failed");
   }
 }
 

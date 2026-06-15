@@ -1,40 +1,11 @@
-import fs from "node:fs";
-import path from "node:path";
-import { fileURLToPath } from "node:url";
+import { getTenantPrompts, type TenantPrompts } from "../../core/tenant-prompts.js";
 
-const here = path.dirname(fileURLToPath(import.meta.url));
+export type { TenantPrompts };
 
-/**
- * Lê os .md do diretório do tenant a cada acesso — edições refletem na próxima
- * mensagem sem reiniciar o container. Custo desprezível (4 arquivos pequenos).
- * Em produção real dá pra trocar por cache mtime se preferir.
- */
-function read(dir: string, name: string): string {
-  return fs.readFileSync(path.join(here, dir, name), "utf8");
-}
-
-export type TenantPrompts = {
-  system: string;
-  knowledge: string;
-  objections: string;
-  examples: string;
-};
-
-export function promptsFor(tenantPromptDir: string): TenantPrompts {
-  return {
-    get system() {
-      return read(tenantPromptDir, "system.md");
-    },
-    get knowledge() {
-      return read(tenantPromptDir, "knowledge.md");
-    },
-    get objections() {
-      return read(tenantPromptDir, "objections.md");
-    },
-    get examples() {
-      return read(tenantPromptDir, "examples.md");
-    },
-  };
+// Carrega os prompts do tenant a partir do banco (com cache Redis).
+// NAO le mais arquivos .md do filesystem em runtime — stateless e replicavel.
+export async function loadPrompts(tenantId: number): Promise<TenantPrompts> {
+  return getTenantPrompts(tenantId);
 }
 
 /**

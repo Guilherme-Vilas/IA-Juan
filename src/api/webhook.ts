@@ -10,7 +10,7 @@ import { handleProspectReply } from "../prospect/handoff.js";
 import { getTenantByInstance } from "../core/tenants.js";
 
 export async function registerRoutes(app: FastifyInstance) {
-  app.get("/health", async () => ({ ok: true }));
+  // /health deep check vive no index.ts (testa Postgres + Redis).
 
   app.post("/webhook/evolution", async (req, reply) => {
     const token =

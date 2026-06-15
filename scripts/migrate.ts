@@ -8,6 +8,10 @@ const here = path.dirname(fileURLToPath(import.meta.url));
 const migrationsDir = path.resolve(here, "..", "migrations");
 
 async function run() {
+  // Advisory lock global — serializa migrations entre réplicas (evita race no boot).
+  // Qualquer réplica que perca a corrida espera o lock e depois pula tudo (já aplicado).
+  await pool.query(`SELECT pg_advisory_lock(727274)`);
+
   await pool.query(`CREATE TABLE IF NOT EXISTS _migrations (
     name TEXT PRIMARY KEY,
     applied_at TIMESTAMPTZ NOT NULL DEFAULT now()
@@ -31,9 +35,11 @@ async function run() {
     } catch (err) {
       await pool.query("ROLLBACK");
       logger.error({ err, file }, "migration failed");
+      await pool.query(`SELECT pg_advisory_unlock(727274)`).catch(() => undefined);
       process.exit(1);
     }
   }
+  await pool.query(`SELECT pg_advisory_unlock(727274)`).catch(() => undefined);
   await pool.end();
 }
 

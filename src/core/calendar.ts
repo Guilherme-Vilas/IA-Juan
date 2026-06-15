@@ -77,11 +77,6 @@ export function authUrlForTenant(tenantSlug: string): string {
   });
 }
 
-// Compatibilidade com /oauth/google/start antigo: sem tenant => Juan.
-export function authUrl(): string {
-  return authUrlForTenant("juan");
-}
-
 export async function saveTokensFromCodeForTenant(tenant: TenantRow, code: string) {
   const oauth2 = makeOAuth2();
   if (!oauth2) throw new Error("Google OAuth not configured");
@@ -108,11 +103,6 @@ export async function saveTokensFromCodeForTenant(tenant: TenantRow, code: strin
   });
 
   logger.info({ tenant: tenant.slug, ownerEmail }, "google tokens saved");
-}
-
-export async function saveTokensFromCode(code: string) {
-  const { defaultTenant } = await import("./tenants.js");
-  await saveTokensFromCodeForTenant(await defaultTenant(), code);
 }
 
 async function getClient(

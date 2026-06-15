@@ -13,7 +13,7 @@ import {
 import { whatsappSender } from "../prospect/senders/whatsapp.js";
 import { linkedinSender } from "../prospect/senders/linkedin.js";
 import { requireTenantById } from "../core/tenants.js";
-import type { ProspectSendJob } from "./queues.js";
+import type { ProspectSendJob, ProspectTickJob } from "./queues.js";
 
 const sendWorker = new Worker<ProspectSendJob>(
   "prospect-send",
@@ -72,20 +72,23 @@ sendWorker.on("failed", (job, err) =>
   logger.error({ err, jobId: job?.id }, "prospect-send worker job failed"),
 );
 
-// Tick periódico — varre todas as campanhas em running (qualquer tenant) e enfileira.
-let tickInterval: NodeJS.Timeout | null = null;
+// Tick periódico via repeatable job do BullMQ (substitui setInterval in-process).
+// Concorrencia 1 — mesmo com N replicas, o BullMQ entrega 1 job por janela.
+const tickWorker = new Worker<ProspectTickJob>(
+  "prospect-tick",
+  async () => {
+    await tickAllCampaigns().catch((err) => logger.error({ err }, "prospect tick fatal"));
+  },
+  { ...bullConnection, concurrency: 1 },
+);
 
-function startTicker() {
-  if (tickInterval) return;
-  const intervalMs = config.PROSPECT_TICK_MS;
-  tickInterval = setInterval(() => {
-    void tickAllCampaigns().catch((err) =>
-      logger.error({ err }, "prospect tick fatal"),
-    );
-  }, intervalMs);
-  logger.info({ intervalMs }, "prospect ticker started");
-}
+tickWorker.on("ready", () => logger.info("prospect-tick worker ready"));
+tickWorker.on("failed", (job, err) =>
+  logger.error({ err, jobId: job?.id }, "prospect-tick worker job failed"),
+);
 
-startTicker();
+// `config` ainda usado? mantém import enxuto — PROSPECT_TICK_MS agora é agendado
+// no entrypoint de workers (workers.ts) via ensureProspectTickScheduled.
+void config;
 
-export { sendWorker };
+export { sendWorker, tickWorker };

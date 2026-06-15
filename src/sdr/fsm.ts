@@ -1,8 +1,9 @@
 import { chat, type ChatMessage } from "../core/llm.js";
 import { SDR_TOOLS } from "./tools.js";
 import { sanitizeReply, type ExtractedCall } from "./sanitize.js";
-import { promptsFor, contextFor, type TenantPrompts } from "./prompts/loader.js";
+import { loadPrompts, contextFor, type TenantPrompts } from "./prompts/loader.js";
 import { lookupPricing, type PricingTipo } from "./pricing.js";
+import { getPlaybookConfig, type PlaybookConfig } from "../core/playbooks.js";
 import {
   closeConversation,
   getLead,
@@ -17,7 +18,7 @@ import {
 import { redis, keys } from "../core/redis.js";
 import { config } from "../config.js";
 import { logger } from "../core/logger.js";
-import { notifyJuan, pauseAi } from "./handoff.js";
+import { executeHandoff, pauseAi } from "./handoff.js";
 import { confirmSlot, fetchAndCacheSlots, formatOffer, getOfferedSlots } from "./scheduler.js";
 import type { TenantRow } from "../core/tenants.js";
 import { getAgentSettings, type AgentSettingsRow } from "../core/agent-settings.js";
@@ -196,6 +197,7 @@ async function applyExtractedCalls(
   state: LeadState,
   lead: LeadRow,
   waId: string,
+  playbook: PlaybookConfig,
 ): Promise<{ slots: Slots; state: LeadState; closedReason: ClosedReason | null; handoff: boolean }> {
   let workingSlots = slots;
   let workingState = state;
@@ -207,7 +209,7 @@ async function applyExtractedCalls(
       const cleaned = cleanSlotsPayload(c.args);
       if (Object.keys(cleaned).length > 0) {
         workingSlots = mergeSlots(workingSlots, cleaned);
-        workingState = autoAdvance(workingState, workingSlots);
+        workingState = autoAdvance(workingState, workingSlots, playbook);
       }
     } else if (c.name === "advance_state") {
       const to = c.args.to as LeadState | undefined;
@@ -215,7 +217,7 @@ async function applyExtractedCalls(
     } else if (c.name === "request_handoff") {
       handoff = true;
       closedReason = "handoff";
-      await notifyJuan(tenant, { ...lead, state: "HANDOFF", slots: workingSlots }, String(c.args.motivo ?? "handoff"));
+      await executeHandoff(tenant, { ...lead, state: "HANDOFF", slots: workingSlots }, String(c.args.motivo ?? "handoff"));
       await pauseAi(tenant, waId);
     } else if (c.name === "close_conversation") {
       closedReason = c.args.reason === "postponed" ? "postponed" : "not_interested";
@@ -225,20 +227,22 @@ async function applyExtractedCalls(
   return { slots: workingSlots, state: workingState, closedReason, handoff };
 }
 
-function autoAdvance(state: LeadState, slots: Slots): LeadState {
+// Avanca o estado a partir das regras do PLAYBOOK (vindas do banco), nao mais
+// de condicionais hardcoded por cliente.
+function slotPresent(slots: Slots, key: string): boolean {
+  const v = (slots as Record<string, unknown>)[key];
+  return v !== undefined && v !== null && v !== "";
+}
+
+function autoAdvance(state: LeadState, slots: Slots, cfg: PlaybookConfig): LeadState {
   if (state === "S0_ABERTURA" && slots.nome) return "S1_DESCOBERTA";
-  if (state === "S1_DESCOBERTA" && (slots.interesse || slots.finalidade || slots.tipo_imovel))
+  if (state === "S1_DESCOBERTA" && cfg.advance_s1_to_s2_any.some((k) => slotPresent(slots, k)))
     return "S2_QUALIFICACAO";
   if (state === "S2_QUALIFICACAO") {
-    // Regra Juan/consorcio: capacidade + valor_bem + intencao_lance
-    const juanReady =
-      !!slots.capacidade_mensal && !!slots.valor_bem && slots.intencao_lance !== undefined;
-    // Regra Facilita/imoveis: renda (capacidade_mensal) + entrada + tipo_imovel
-    const imovelReady =
-      !!slots.capacidade_mensal &&
-      slots.entrada_disponivel !== undefined &&
-      !!slots.tipo_imovel;
-    if (juanReady || imovelReady) return "S3_EDUCACAO";
+    const ready = cfg.advance_s2_to_s3_groups.some((group) =>
+      group.every((k) => slotPresent(slots, k)),
+    );
+    if (ready) return "S3_EDUCACAO";
   }
   return state;
 }
@@ -307,8 +311,9 @@ export async function runTurn(
     lead.closed_at = null;
   }
 
-  const prompts = promptsFor(tenant.prompt_dir);
+  const prompts = await loadPrompts(tenant.id);
   const agentSettings = await getAgentSettings(tenant.id);
+  const playbook = await getPlaybookConfig(tenant.playbook_slug);
 
   // No retry, o user message ja foi gravado no histórico no turno original
   // que falhou. Pular pra nao duplicar.
@@ -376,7 +381,7 @@ export async function runTurn(
         { tenant: tenant.slug, waId, attempts: currentAttempt },
         "fsm: max retries reached, handing off",
       );
-      await notifyJuan(
+      await executeHandoff(
         tenant,
         { ...lead, state: "HANDOFF" },
         `IA falhou ${currentAttempt}x após instabilidade técnica`,
@@ -421,7 +426,7 @@ export async function runTurn(
               "no_slots_extracted — você chamou save_slots sem valores válidos. NÃO chame essa tool de novo sem dados concretos; responda ao lead em texto.";
           } else {
             workingSlots = mergeSlots(workingSlots, cleaned);
-            workingState = autoAdvance(workingState, workingSlots);
+            workingState = autoAdvance(workingState, workingSlots, playbook);
             toolResult = `slots_saved:${JSON.stringify(workingSlots)} state:${workingState}`;
           }
         } else if (name === "advance_state") {
@@ -438,7 +443,7 @@ export async function runTurn(
               : workingSlots.interesse === "imovel"
                 ? "imovel"
                 : undefined);
-          const result = lookupPricing(valor, tipo);
+          const result = lookupPricing(valor, tipo, playbook.pricing);
           if (result.ok) {
             toolResult =
               `pricing_check: faixa de R$ ${valor.toLocaleString("pt-BR")} (${result.row.tipo}) CABE no perfil. ` +
@@ -460,7 +465,7 @@ export async function runTurn(
           closedByHandoff = true;
           closedReason = "handoff";
           const motivo = String(args.motivo ?? "handoff solicitado");
-          await notifyJuan(tenant, { ...lead, state: "HANDOFF", slots: workingSlots }, motivo);
+          await executeHandoff(tenant, { ...lead, state: "HANDOFF", slots: workingSlots }, motivo);
           await pauseAi(tenant, waId);
           replyText =
             (msg.content && sanitizeReply(msg.content).clean) ||
@@ -526,7 +531,7 @@ export async function runTurn(
         { tenant: tenant.slug, waId, count: calls.length, names: calls.map((c) => c.name) },
         "sanitize: extracted inline tool calls",
       );
-      const sideEffects = await applyExtractedCalls(tenant, calls, workingSlots, workingState, lead, waId);
+      const sideEffects = await applyExtractedCalls(tenant, calls, workingSlots, workingState, lead, waId, playbook);
       workingSlots = sideEffects.slots;
       workingState = sideEffects.state;
       if (sideEffects.closedReason && !closedReason) closedReason = sideEffects.closedReason;
@@ -554,7 +559,7 @@ export async function runTurn(
     replyText = "Deixa eu só organizar aqui — pode me contar um pouquinho mais do que você busca?";
   }
 
-  workingState = autoAdvance(workingState, workingSlots);
+  workingState = autoAdvance(workingState, workingSlots, playbook);
 
   // Se estamos num retry e a chamada deu certo, prefixa um "Voltei!" simpático
   // pra o lead saber que a IA retomou — soa muito mais humano que mandar a

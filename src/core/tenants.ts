@@ -43,6 +43,53 @@ export async function invalidateTenantsCache(): Promise<void> {
   cacheAt = 0;
 }
 
+export type CreateTenantInput = {
+  slug: string;
+  name: string;
+  evolution_instance: string;
+  owner_whatsapp_e164: string;
+  owner_name?: string;
+  timezone?: string;
+  work_start_hour?: number;
+  work_end_hour?: number;
+  meeting_duration_min?: number;
+  prompt_dir?: string;
+  playbook_slug?: string | null;
+  active?: boolean;
+};
+
+export async function createTenant(input: CreateTenantInput): Promise<TenantRow> {
+  const { rows } = await pool.query<TenantRow>(
+    `INSERT INTO tenants
+       (slug, name, evolution_instance, owner_whatsapp_e164, owner_name, timezone,
+        work_start_hour, work_end_hour, meeting_duration_min, prompt_dir, playbook_slug, active)
+     VALUES ($1,$2,$3,$4,COALESCE($5,''),COALESCE($6,'America/Sao_Paulo'),
+             COALESCE($7,9),COALESCE($8,18),COALESCE($9,60),COALESCE($10,$1),$11,COALESCE($12,false))
+     RETURNING *`,
+    [
+      input.slug,
+      input.name,
+      input.evolution_instance,
+      input.owner_whatsapp_e164,
+      input.owner_name ?? null,
+      input.timezone ?? null,
+      input.work_start_hour ?? null,
+      input.work_end_hour ?? null,
+      input.meeting_duration_min ?? null,
+      input.prompt_dir ?? null,
+      input.playbook_slug ?? null,
+      input.active ?? null,
+    ],
+  );
+  await invalidateTenantsCache();
+  return rows[0]!;
+}
+
+export async function setTenantActive(tenantId: number, active: boolean): Promise<void> {
+  await pool.query(`UPDATE tenants SET active = $1, updated_at = now() WHERE id = $2`, [active, tenantId]);
+  await invalidateTenantsCache();
+}
+
 export async function listTenants(): Promise<TenantRow[]> {
   await ensureCache();
   return [...cacheById.values()];
