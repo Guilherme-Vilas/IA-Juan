@@ -87,7 +87,9 @@ const worker = new Worker<RetryTurnJob>(
       }
 
       // Sucesso final → agenda follow-up normal se conversa segue aberta
-      if (result.replyText && !result.closedReason) {
+      // (mesma regra do inbound: nada de follow-up em estado terminal).
+      const TERMINAL_STATES = ["S5_CONFIRMADO", "HANDOFF"];
+      if (result.replyText && !result.closedReason && !TERMINAL_STATES.includes(result.newState)) {
         await scheduleFollowup(tenantId, waId, 1, config.FOLLOWUP_1_MS);
       }
     } catch (err) {

@@ -29,12 +29,15 @@ async function pushHistoryAssistant(tenantSlug: string, waId: string, content: s
 
 function shouldFire(lead: {
   status: string;
+  state: string;
   paused: boolean;
   last_user_at: Date | null;
   last_assistant_at: Date | null;
 }): boolean {
   if (lead.status !== "open") return false;
   if (lead.paused) return false;
+  // Já agendou (S5) ou foi pra humano (HANDOFF) → nada de follow-up de "sumiço".
+  if (lead.state === "S5_CONFIRMADO" || lead.state === "HANDOFF") return false;
   const lu = lead.last_user_at ? new Date(lead.last_user_at).getTime() : 0;
   const la = lead.last_assistant_at ? new Date(lead.last_assistant_at).getTime() : 0;
   return la > lu;

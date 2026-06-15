@@ -86,8 +86,12 @@ const worker = new Worker<InboundJob>(
         return; // não agenda follow-up nem segue — o retry vai continuar daqui
       }
 
-      // se a conversa ficou aberta e a IA respondeu → agenda follow-up 1
-      if (result.replyText && !result.closedReason) {
+      // se a conversa ficou aberta e a IA respondeu → agenda follow-up 1.
+      // NÃO agenda em estados terminais (S5_CONFIRMADO = já agendou, HANDOFF =
+      // humano assumiu): senão um "obrigado" pós-agendamento reabre e dispara
+      // o follow-up de "conseguiu ver a mensagem?" sem sentido.
+      const TERMINAL_STATES = ["S5_CONFIRMADO", "HANDOFF"];
+      if (result.replyText && !result.closedReason && !TERMINAL_STATES.includes(result.newState)) {
         await scheduleFollowup(tenantId, waId, 1, config.FOLLOWUP_1_MS);
         logger.debug({ tenant: tenant.slug, waId }, "followup stage 1 scheduled");
       }
