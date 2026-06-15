@@ -2,6 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { pool } from "../src/core/db.js";
+import { redis } from "../src/core/redis.js";
 import { logger } from "../src/core/logger.js";
 import { upsertTenantPrompts } from "../src/core/tenant-prompts.js";
 import { createUser, linkUserToTenant } from "../src/core/users.js";
@@ -54,10 +55,19 @@ async function run() {
   await seedPrompts();
   await seedAdmin();
   await pool.end();
+  // Fecha a conexao persistente do Redis (aberta pelo import de tenant-prompts).
+  // Sem isso o processo fica pendurado e o `&& index.ts` do entrypoint nunca roda.
+  try {
+    redis.disconnect();
+  } catch {
+    /* ignore */
+  }
   logger.info("seed: concluído");
 }
 
-run().catch((err) => {
-  logger.error({ err }, "seed fatal");
-  process.exit(1);
-});
+run()
+  .then(() => process.exit(0))
+  .catch((err) => {
+    logger.error({ err }, "seed fatal");
+    process.exit(1);
+  });
