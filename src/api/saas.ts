@@ -9,6 +9,7 @@ import {
 } from "../core/internal-calendar.js";
 import { listPlaybooks, setTenantPlaybook } from "../core/playbooks.js";
 import { invalidateTenantsCache } from "../core/tenants.js";
+import { getTenantPrompts, upsertTenantPrompts } from "../core/tenant-prompts.js";
 
 function stringArray(value: unknown): string[] {
   if (!Array.isArray(value)) return [];
@@ -50,6 +51,28 @@ export async function registerSaasRoutes(app: FastifyInstance) {
         handoff_rules: String(body.handoff_rules ?? "").trim(),
       });
       return { settings: saved };
+    });
+
+    // ===== Personalização da IA (prompts editáveis pelo cliente) =====
+    scope.get("/admin/tenants/:slug/prompts", async (req) => {
+      return { prompts: await getTenantPrompts(req.tenantId!) };
+    });
+
+    scope.patch("/admin/tenants/:slug/prompts", async (req) => {
+      const body = req.body as {
+        system?: string;
+        knowledge?: string;
+        objections?: string;
+        examples?: string;
+      };
+      // Só atualiza os campos enviados (undefined = preserva o atual).
+      await upsertTenantPrompts(req.tenantId!, {
+        system: typeof body.system === "string" ? body.system : undefined,
+        knowledge: typeof body.knowledge === "string" ? body.knowledge : undefined,
+        objections: typeof body.objections === "string" ? body.objections : undefined,
+        examples: typeof body.examples === "string" ? body.examples : undefined,
+      });
+      return { ok: true };
     });
 
     scope.get("/admin/tenants/:slug/working-hours", async (req) => {

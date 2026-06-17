@@ -139,5 +139,26 @@ export function agentApi(slug: string) {
         method: "PATCH",
         body: JSON.stringify({ playbook_slug: playbookSlug }),
       }),
+    getPrompts: () => adminCall(`/admin/tenants/${slug}/prompts`, { method: "GET" }),
+    updatePrompts: (body: Record<string, unknown>) =>
+      adminCall(`/admin/tenants/${slug}/prompts`, {
+        method: "PATCH",
+        body: JSON.stringify(body),
+      }),
+  };
+}
+
+export function knowledgeApi(slug: string) {
+  return {
+    list: () => adminCall(`/admin/tenants/${slug}/knowledge`, { method: "GET" }),
+    create: (body: Record<string, unknown>) =>
+      adminCall(`/admin/tenants/${slug}/knowledge`, {
+        method: "POST",
+        body: JSON.stringify(body),
+      }),
+    remove: (id: number) =>
+      adminCall(`/admin/tenants/${slug}/knowledge/${id}`, { method: "DELETE" }),
+    reindex: (id: number) =>
+      adminCall(`/admin/tenants/${slug}/knowledge/${id}/reindex`, { method: "POST" }),
   };
 }
