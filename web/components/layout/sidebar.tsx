@@ -13,11 +13,13 @@ import {
   BookOpen,
   Sparkles,
   Library,
+  Users,
+  LogOut,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { LogoMark } from "@/components/ui/logo";
 
-type NavItem = { href: string; label: string; icon: typeof LayoutDashboard };
+type NavItem = { href: string; label: string; icon: typeof LayoutDashboard; superadmin?: boolean };
 type NavGroup = { label?: string; items: NavItem[] };
 
 const groups: NavGroup[] = [
@@ -46,14 +48,23 @@ const groups: NavGroup[] = [
   {
     label: "Plataforma",
     items: [
-      { href: "/tenants", label: "Instâncias", icon: Server },
+      { href: "/tenants", label: "Instâncias", icon: Server, superadmin: true },
+      { href: "/users", label: "Usuários", icon: Users, superadmin: true },
       { href: "/playbooks", label: "Playbooks", icon: BookOpen },
       { href: "/settings", label: "Configurações", icon: Settings },
     ],
   },
 ];
 
-export function Sidebar() {
+export function Sidebar({
+  isSuperadmin = false,
+  userLabel = "Usuário",
+  userRole = "—",
+}: {
+  isSuperadmin?: boolean;
+  userLabel?: string;
+  userRole?: string;
+}) {
   const pathname = usePathname();
   return (
     <aside className="flex h-full w-[244px] shrink-0 flex-col border-r border-line bg-canvas-deep px-3 py-5">
@@ -76,7 +87,9 @@ export function Sidebar() {
                 {group.label}
               </div>
             )}
-            {group.items.map(({ href, label, icon: Icon }) => {
+            {group.items
+              .filter((it) => !it.superadmin || isSuperadmin)
+              .map(({ href, label, icon: Icon }) => {
               const active = pathname.startsWith(href);
               return (
                 <Link
@@ -101,12 +114,19 @@ export function Sidebar() {
       <div className="mt-2 border-t border-line pt-3">
         <div className="flex items-center gap-2.5 px-1.5">
           <div className="grid h-7 w-7 place-items-center rounded-md border border-line bg-canvas-surface text-[11px] font-semibold text-ink">
-            J
+            {userLabel.charAt(0).toUpperCase()}
           </div>
-          <div className="min-w-0 leading-tight">
-            <div className="truncate text-[12px] text-ink">Juan Monteiro</div>
-            <div className="text-[10px] text-ink-faint">Administrador</div>
+          <div className="min-w-0 flex-1 leading-tight">
+            <div className="truncate text-[12px] text-ink">{userLabel}</div>
+            <div className="text-[10px] text-ink-faint">{userRole}</div>
           </div>
+          <a
+            href="/api/auth/logout"
+            title="Sair"
+            className="rounded-md p-1.5 text-ink-muted transition-colors hover:bg-canvas-surface-2 hover:text-danger"
+          >
+            <LogOut size={14} />
+          </a>
         </div>
       </div>
     </aside>

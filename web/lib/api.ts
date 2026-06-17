@@ -1,16 +1,18 @@
-const FASTIFY = process.env.FASTIFY_BASE_URL ?? "http://localhost:3000";
-const TOKEN = process.env.ADMIN_API_TOKEN ?? "";
+import { getSessionToken } from "./session";
 
+const FASTIFY = process.env.FASTIFY_BASE_URL ?? "http://localhost:3000";
+
+// Server-side helper: chama o Fastify autenticando como o USUÁRIO logado
+// (JWT do cookie httpOnly como Bearer). O Fastify valida o vínculo user<->tenant.
 export async function adminCall(path: string, init?: RequestInit) {
-  const res = await fetch(`${FASTIFY}${path}`, {
-    ...init,
-    headers: {
-      "Content-Type": "application/json",
-      "x-admin-token": TOKEN,
-      ...(init?.headers ?? {}),
-    },
-    cache: "no-store",
-  });
+  const token = getSessionToken();
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+    ...((init?.headers as Record<string, string>) ?? {}),
+  };
+  if (token) headers.Authorization = `Bearer ${token}`;
+
+  const res = await fetch(`${FASTIFY}${path}`, { ...init, headers, cache: "no-store" });
   if (!res.ok) {
     throw new Error(`Fastify admin ${res.status}: ${await res.text()}`);
   }

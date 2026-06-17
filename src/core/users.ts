@@ -88,6 +88,42 @@ export async function getUserTenantRole(userId: number, tenantId: number): Promi
   return rows[0]?.role ?? null;
 }
 
+// Lista todos os usuarios (uso administrativo) com os tenants vinculados agregados.
+export async function listUsers(): Promise<
+  Array<{
+    id: number;
+    email: string;
+    name: string;
+    is_superadmin: boolean;
+    active: boolean;
+    tenants: Array<{ slug: string; name: string; role: TenantRole }>;
+  }>
+> {
+  const { rows } = await pool.query<{
+    id: number;
+    email: string;
+    name: string;
+    is_superadmin: boolean;
+    active: boolean;
+    tenants: Array<{ slug: string; name: string; role: TenantRole }> | null;
+  }>(
+    `SELECT u.id, u.email, u.name, u.is_superadmin, u.active,
+            COALESCE(
+              json_agg(
+                json_build_object('slug', t.slug, 'name', t.name, 'role', ut.role)
+                ORDER BY t.name
+              ) FILTER (WHERE t.id IS NOT NULL),
+              '[]'
+            ) AS tenants
+       FROM users u
+       LEFT JOIN user_tenants ut ON ut.user_id = u.id
+       LEFT JOIN tenants t ON t.id = ut.tenant_id
+      GROUP BY u.id
+      ORDER BY u.created_at ASC`,
+  );
+  return rows.map((r) => ({ ...r, tenants: r.tenants ?? [] }));
+}
+
 export async function listUserTenants(userId: number): Promise<Array<{ tenant_id: number; slug: string; name: string; role: TenantRole }>> {
   const { rows } = await pool.query<{ tenant_id: number; slug: string; name: string; role: TenantRole }>(
     `SELECT ut.tenant_id, t.slug, t.name, ut.role

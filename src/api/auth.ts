@@ -4,6 +4,7 @@ import {
   createUser,
   getUserByEmail,
   linkUserToTenant,
+  listUsers,
   listUserTenants,
   verifyPassword,
   type TenantRole,
@@ -36,14 +37,27 @@ export async function registerAuthRoutes(app: FastifyInstance) {
 
   // ===== Quem sou eu (+ tenants que acesso) =====
   app.get("/auth/me", { onRequest: [app.authenticate] }, async (req, reply) => {
+    // Superadmin/service enxergam TODOS os tenants.
+    const allAsLinks = async () => {
+      const { listTenants } = await import("../core/tenants.js");
+      const all = await listTenants();
+      return all.map((t) => ({ tenant_id: t.id, slug: t.slug, name: t.name, role: "owner" as const }));
+    };
+
     if (req.auth?.kind === "service") {
-      return { kind: "service", tenants: [] };
+      return { kind: "service", is_superadmin: true, tenants: await allAsLinks() };
     }
     if (req.auth?.kind === "user") {
-      const tenants = await listUserTenants(req.auth.userId);
+      const tenants = req.auth.isSuperadmin ? await allAsLinks() : await listUserTenants(req.auth.userId);
       return { kind: "user", userId: req.auth.userId, is_superadmin: req.auth.isSuperadmin, tenants };
     }
     return reply.code(401).send({ error: "unauthorized" });
+  });
+
+  // ===== Listar usuarios (superadmin/service apenas) =====
+  app.get("/auth/users", { onRequest: [app.authenticate] }, async (req, reply) => {
+    if (!requireSuperadmin(req, reply)) return;
+    return { users: await listUsers() };
   });
 
   // ===== Criar usuario + vincular a tenant (superadmin/service apenas) =====

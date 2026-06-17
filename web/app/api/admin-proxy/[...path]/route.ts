@@ -1,21 +1,27 @@
 import { NextResponse } from "next/server";
+import { cookies } from "next/headers";
+import { SESSION_COOKIE } from "@/lib/session";
 
 const FASTIFY = process.env.FASTIFY_BASE_URL ?? "http://localhost:3000";
-const TOKEN = process.env.ADMIN_API_TOKEN ?? "";
 
-// Proxy genérico — encaminha qualquer chamada do front pra /admin/* do Fastify,
-// adicionando o token de admin. Evita criar 1 route handler por endpoint.
+// Proxy genérico — encaminha as chamadas do client pra /admin/* do Fastify,
+// autenticando como o USUÁRIO logado (JWT do cookie httpOnly como Bearer).
+// O Fastify valida o vínculo user<->tenant; sem sessão -> 401.
 async function proxy(req: Request, params: { path: string[] }) {
   const subPath = params.path.join("/");
   const url = new URL(req.url);
   const target = `${FASTIFY}/admin/${subPath}${url.search}`;
   const body = req.method !== "GET" && req.method !== "DELETE" ? await req.text() : undefined;
+
+  const token = cookies().get(SESSION_COOKIE)?.value;
+  if (!token) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+
   try {
     const res = await fetch(target, {
       method: req.method,
       headers: {
         "Content-Type": "application/json",
-        "x-admin-token": TOKEN,
+        Authorization: `Bearer ${token}`,
       },
       body,
       cache: "no-store",
