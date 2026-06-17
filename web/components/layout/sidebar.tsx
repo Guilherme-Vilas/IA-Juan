@@ -11,6 +11,8 @@ import {
   Send,
   Server,
   BookOpen,
+  Sparkles,
+  Library,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { LogoMark } from "@/components/ui/logo";
@@ -33,6 +35,13 @@ const groups: NavGroup[] = [
   {
     label: "Análise",
     items: [{ href: "/metrics", label: "Métricas", icon: BarChart3 }],
+  },
+  {
+    label: "Inteligência",
+    items: [
+      { href: "/personalization", label: "Personalização da IA", icon: Sparkles },
+      { href: "/knowledge", label: "Base de conhecimento", icon: Library },
+    ],
   },
   {
     label: "Plataforma",

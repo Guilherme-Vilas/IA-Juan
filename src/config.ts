@@ -33,6 +33,7 @@ const schema = z.object({
   OPENAI_MODEL_MAIN: z.string().default("gpt-4o-mini"),
   OPENAI_MODEL_FAST: z.string().default("gpt-4o-mini"),
   OPENAI_MODEL_AUDIO: z.string().default("whisper-1"),
+  OPENAI_MODEL_EMBED: z.string().default("text-embedding-3-small"),
 
   // Evolution API: base URL + key sao compartilhados; a instancia (whatsapp connection)
   // vem por tenant na tabela tenants.evolution_instance.

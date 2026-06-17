@@ -13,6 +13,7 @@ import { registerProspectRoutes } from "./api/prospect.js";
 import { registerGoogleRoutes } from "./api/google.js";
 import { registerSaasRoutes } from "./api/saas.js";
 import { registerTenantProvisioningRoutes } from "./api/tenants.js";
+import { registerKnowledgeRoutes } from "./api/knowledge.js";
 
 async function main() {
   const app = Fastify({ logger: false, bodyLimit: 10 * 1024 * 1024 });
@@ -47,6 +48,7 @@ async function main() {
   await registerProspectRoutes(app);
   await registerGoogleRoutes(app);
   await registerSaasRoutes(app);
+  await registerKnowledgeRoutes(app);
 
   await app.listen({ host: "0.0.0.0", port: config.PORT });
   logger.info(

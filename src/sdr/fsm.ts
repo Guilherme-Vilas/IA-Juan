@@ -4,6 +4,7 @@ import { sanitizeReply, type ExtractedCall } from "./sanitize.js";
 import { loadPrompts, contextFor, type TenantPrompts } from "./prompts/loader.js";
 import { lookupPricing, type PricingTipo } from "./pricing.js";
 import { getPlaybookConfig, type PlaybookConfig } from "../core/playbooks.js";
+import { retrieveRelevant, formatKnowledgeContext } from "../core/knowledge.js";
 import {
   closeConversation,
   getLead,
@@ -50,11 +51,16 @@ function buildSystemPrompt(
   lead: LeadRow,
   agentSettings?: AgentSettingsRow | null,
   reopenedFrom?: ClosedReason | null,
+  knowledgeContext?: string,
 ): string {
   const extra = contextFor(prompts, lead.state);
   const parts = [prompts.system];
   if (extra) {
     parts.push("", "---", "", "# Contexto adicional pra este estado", extra);
+  }
+  // Base de conhecimento (RAG) — chunks recuperados relevantes à pergunta do lead.
+  if (knowledgeContext) {
+    parts.push("", "---", "", knowledgeContext);
   }
   if (agentSettings) {
     parts.push(
@@ -321,8 +327,24 @@ export async function runTurn(
     await pushHistory(tenant.slug, waId, "user", userText);
   }
 
+  // RAG: recupera trechos relevantes da base de conhecimento do tenant pra
+  // pergunta atual do lead. Best-effort — se falhar, segue sem (nao trava o turno).
+  let knowledgeContext = "";
+  try {
+    const queryForKb = (userText || (await loadHistory(tenant.slug, waId)).slice(-1)[0]?.content || "").slice(0, 500);
+    if (queryForKb) {
+      const chunks = await retrieveRelevant(tenant.id, queryForKb, 4);
+      knowledgeContext = formatKnowledgeContext(chunks);
+      if (chunks.length) {
+        logger.debug({ tenant: tenant.slug, waId, hits: chunks.length }, "rag: knowledge injected");
+      }
+    }
+  } catch (err) {
+    logger.warn({ err, tenant: tenant.slug, waId }, "rag: retrieval failed (continuing without)");
+  }
+
   const history = await loadHistory(tenant.slug, waId);
-  const systemPrompt = buildSystemPrompt(prompts, lead, agentSettings, reopenedFrom);
+  const systemPrompt = buildSystemPrompt(prompts, lead, agentSettings, reopenedFrom, knowledgeContext);
 
   const messages: ChatMessage[] = [{ role: "system", content: systemPrompt }, ...history];
 
