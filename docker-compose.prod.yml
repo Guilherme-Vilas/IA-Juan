@@ -96,6 +96,9 @@ services:
       - LOG_LEVEL=info
       - PORT=3000
       - PUBLIC_BASE_URL=${PUBLIC_BASE_URL}
+      # Dominio do DASHBOARD (web) — usado pra montar o link de convite (/invite).
+      - APP_PUBLIC_URL=${APP_PUBLIC_URL:-https://app.systemvita.com.br}
+      - INVITE_TTL_DAYS=${INVITE_TTL_DAYS:-2}
 
       - REDIS_URL=redis://redis:6379
       - DATABASE_URL=postgres://ia:${POSTGRES_PASSWORD:-ia}@postgres:5432/ia_juan

@@ -28,8 +28,10 @@ const schema = z.object({
   LOG_LEVEL: z.string().default("info"),
   PORT: z.coerce.number().default(3000),
   PUBLIC_BASE_URL: z.string().url(),
-  // URL publica do painel/dashboard (Next.js). Usada pra montar o link de convite.
-  APP_PUBLIC_URL: z.string().url().default("https://systemvita.com.br"),
+  // URL publica do painel/dashboard (Next.js) — onde vive a rota /invite.
+  // ATENCAO: e o dominio do DASHBOARD (app.systemvita.com.br), NAO o apex
+  // (systemvita.com.br), que serve a landing e nao tem /invite.
+  APP_PUBLIC_URL: z.string().url().default("https://app.systemvita.com.br"),
   // Validade do link de convite, em dias.
   INVITE_TTL_DAYS: z.coerce.number().default(2),
 
