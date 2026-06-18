@@ -28,6 +28,10 @@ const schema = z.object({
   LOG_LEVEL: z.string().default("info"),
   PORT: z.coerce.number().default(3000),
   PUBLIC_BASE_URL: z.string().url(),
+  // URL publica do painel/dashboard (Next.js). Usada pra montar o link de convite.
+  APP_PUBLIC_URL: z.string().url().default("https://systemvita.com.br"),
+  // Validade do link de convite, em dias.
+  INVITE_TTL_DAYS: z.coerce.number().default(2),
 
   OPENAI_API_KEY: z.string().min(1),
   OPENAI_MODEL_MAIN: z.string().default("gpt-4o-mini"),

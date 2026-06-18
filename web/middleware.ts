@@ -18,7 +18,10 @@ export function middleware(req: NextRequest) {
   return NextResponse.next();
 }
 
-// Protege tudo, EXCETO: /login, as rotas de auth, assets estáticos e o favicon.
+// Protege tudo, EXCETO: /login, /invite (onboarding público), as rotas de auth,
+// o proxy público de convite, assets estáticos e o favicon.
 export const config = {
-  matcher: ["/((?!login|api/auth|_next/static|_next/image|favicon.ico|brand|icon.png).*)"],
+  matcher: [
+    "/((?!login|invite|api/auth|api/invite|_next/static|_next/image|favicon.ico|brand|icon.png).*)",
+  ],
 };

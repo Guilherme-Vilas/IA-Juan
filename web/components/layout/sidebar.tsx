@@ -14,6 +14,7 @@ import {
   Sparkles,
   Library,
   Users,
+  Ticket,
   LogOut,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -50,6 +51,7 @@ const groups: NavGroup[] = [
     items: [
       { href: "/tenants", label: "Instâncias", icon: Server, superadmin: true },
       { href: "/users", label: "Usuários", icon: Users, superadmin: true },
+      { href: "/invites", label: "Convites", icon: Ticket, superadmin: true },
       { href: "/playbooks", label: "Playbooks", icon: BookOpen },
       { href: "/settings", label: "Configurações", icon: Settings },
     ],

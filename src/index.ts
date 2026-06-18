@@ -6,6 +6,7 @@ import { pool } from "./core/db.js";
 import { redis } from "./core/redis.js";
 import { registerAuth } from "./auth/plugin.js";
 import { registerAuthRoutes } from "./api/auth.js";
+import { registerInviteRoutes } from "./api/invites.js";
 import { registerRoutes } from "./api/webhook.js";
 import { registerSimulatorRoutes } from "./api/simulator.js";
 import { registerAdminRoutes } from "./api/admin.js";
@@ -40,6 +41,7 @@ async function main() {
   // Auth precisa registrar ANTES das rotas que usam app.authenticate.
   await registerAuth(app);
   await registerAuthRoutes(app);
+  await registerInviteRoutes(app);
 
   await registerRoutes(app);
   await registerSimulatorRoutes(app);

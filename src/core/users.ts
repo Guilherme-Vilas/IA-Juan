@@ -70,6 +70,39 @@ export async function createUser(input: {
   return rows[0]!;
 }
 
+// Cria usuario SEM upsert — falha se o email ja existe. Use em fluxos publicos
+// (aceite de convite), onde um ON CONFLICT DO UPDATE permitiria sobrescrever a
+// senha de uma conta existente so por conhecer o email.
+export class EmailTakenError extends Error {
+  constructor(email: string) {
+    super(`email já cadastrado: ${email}`);
+    this.name = "EmailTakenError";
+  }
+}
+
+export async function createUserStrict(input: {
+  email: string;
+  password: string;
+  name?: string;
+  is_superadmin?: boolean;
+}): Promise<UserRow> {
+  try {
+    const { rows } = await pool.query<UserRow>(
+      `INSERT INTO users (email, password_hash, name, is_superadmin)
+       VALUES ($1, $2, $3, COALESCE($4, false))
+       RETURNING *`,
+      [input.email.toLowerCase(), hashPassword(input.password), input.name ?? "", input.is_superadmin ?? false],
+    );
+    return rows[0]!;
+  } catch (err: unknown) {
+    // 23505 = unique_violation (email UNIQUE).
+    if (typeof err === "object" && err && (err as { code?: string }).code === "23505") {
+      throw new EmailTakenError(input.email);
+    }
+    throw err;
+  }
+}
+
 export async function linkUserToTenant(userId: number, tenantId: number, role: TenantRole = "owner") {
   await pool.query(
     `INSERT INTO user_tenants (user_id, tenant_id, role)
