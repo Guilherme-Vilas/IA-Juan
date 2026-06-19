@@ -9,6 +9,9 @@ import {
 } from "../core/crm.js";
 import { listFieldDefs, replaceFieldDefs, setLeadCustomFields, type FieldDefInput } from "../core/custom-fields.js";
 import { createTask, listTasks, setTaskDone, deleteTask } from "../core/tasks.js";
+import { ensureIngestToken, rotateIngestToken } from "../core/ingest.js";
+import { pool } from "../core/db.js";
+import { config } from "../config.js";
 
 export async function registerCrmRoutes(app: FastifyInstance) {
   app.register(async (scope) => {
@@ -118,6 +121,33 @@ export async function registerCrmRoutes(app: FastifyInstance) {
       const { id } = req.params as { slug: string; id: string };
       const ok = await deleteTask(req.tenantId!, Number(id));
       if (!ok) return reply.code(404).send({ error: "task not found" });
+      return { ok: true };
+    });
+
+    // ===== Captura de leads (token de ingestao + saudacao) =====
+    scope.get("/admin/tenants/:slug/ingest", async (req) => {
+      const token = await ensureIngestToken(req.tenantId!);
+      const greet = await pool.query<{ capture_greeting: string }>(
+        `SELECT capture_greeting FROM tenants WHERE id = $1`,
+        [req.tenantId!],
+      );
+      return {
+        token,
+        url: `${config.PUBLIC_BASE_URL.replace(/\/$/, "")}/ingest/lead`,
+        capture_greeting: greet.rows[0]?.capture_greeting ?? "",
+      };
+    });
+    scope.post("/admin/tenants/:slug/ingest/rotate", async (req) => {
+      return { token: await rotateIngestToken(req.tenantId!) };
+    });
+    scope.patch("/admin/tenants/:slug/ingest/greeting", async (req) => {
+      const body = req.body as { capture_greeting?: string };
+      await pool.query(`UPDATE tenants SET capture_greeting = $1, updated_at = now() WHERE id = $2`, [
+        (body?.capture_greeting ?? "").slice(0, 1000),
+        req.tenantId!,
+      ]);
+      const { invalidateTenantsCache } = await import("../core/tenants.js");
+      await invalidateTenantsCache();
       return { ok: true };
     });
   });

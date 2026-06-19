@@ -219,6 +219,14 @@ export function crmApi(slug: string) {
         body: JSON.stringify({ done }),
       }),
     deleteTask: (id: number) => adminCall(`/admin/tenants/${slug}/tasks/${id}`, { method: "DELETE" }),
+    // Lote 3 — captura de leads
+    ingest: () => adminCall(`/admin/tenants/${slug}/ingest`, { method: "GET" }),
+    rotateIngest: () => adminCall(`/admin/tenants/${slug}/ingest/rotate`, { method: "POST" }),
+    setGreeting: (capture_greeting: string) =>
+      adminCall(`/admin/tenants/${slug}/ingest/greeting`, {
+        method: "PATCH",
+        body: JSON.stringify({ capture_greeting }),
+      }),
   };
 }
 

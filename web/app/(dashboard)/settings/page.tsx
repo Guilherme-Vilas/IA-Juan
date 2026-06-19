@@ -5,6 +5,7 @@ import { getCurrentTenant } from "@/lib/tenant";
 import type { AgentSettings, PlaybookTemplate, CustomFieldDef } from "@/lib/types";
 import { AgentSettingsForm } from "./_components/agent-settings-form";
 import { CustomFieldsEditor } from "./_components/custom-fields-editor";
+import { CaptureCard } from "./_components/capture-card";
 
 export const dynamic = "force-dynamic";
 
@@ -52,6 +53,7 @@ export default async function SettingsPage() {
           playbooks={playbooks}
         />
         <CustomFieldsEditor initial={fieldDefs} />
+        <CaptureCard />
       </div>
     </>
   );

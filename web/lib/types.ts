@@ -87,6 +87,8 @@ export type Lead = {
   assigned_user_id: number | null;
   // CRM Lote 2: campos customizados (keyed por def.key)
   custom_fields: Record<string, unknown>;
+  // CRM Lote 3: detalhe da origem (utm, anuncio, etc.)
+  source_detail: Record<string, unknown>;
 };
 
 export type TenantMember = {

@@ -7,6 +7,7 @@ import { upsertAgentSettings } from "./agent-settings.js";
 import { upsertWorkingHour } from "./internal-calendar.js";
 import { upsertTenantPrompts } from "./tenant-prompts.js";
 import { ensurePipeline } from "./pipeline.js";
+import { ensureIngestToken } from "./ingest.js";
 
 export function slugify(s: string): string {
   return s
@@ -99,6 +100,8 @@ export async function createTenantWithSeed(input: ProvisionTenantInput): Promise
 
   // Pipeline default (CRM) — 7 etapas canonicas mapeadas 1:1 com as fases da IA.
   await ensurePipeline(tenant.id);
+  // Token de captura de leads (endpoint publico /ingest/lead).
+  await ensureIngestToken(tenant.id);
 
   return tenant;
 }

@@ -9,7 +9,7 @@ export async function GET() {
     `SELECT id, tenant_id, wa_id, nome, source, state, slots, paused, status, closed_reason,
             closed_at, last_user_at, last_assistant_at, created_at, updated_at,
             pipeline_stage_id, stage_manual, outcome, outcome_reason, outcome_at, stage_entered_at,
-            value_cents, assigned_user_id
+            value_cents, assigned_user_id, custom_fields, source_detail
        FROM leads
       WHERE tenant_id = $1
       ORDER BY updated_at DESC

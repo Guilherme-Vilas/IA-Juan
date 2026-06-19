@@ -61,6 +61,9 @@ export function LeadCard({
         {lead.slots.interesse && (
           <Badge className="bg-canvas-surface-2 text-ink">{lead.slots.interesse}</Badge>
         )}
+        {lead.source && lead.source !== "whatsapp" && (
+          <Badge className="bg-info/10 text-info">{lead.source}</Badge>
+        )}
         {lead.value_cents != null && (
           <Badge className="bg-accent-bronze/15 text-accent-bronze-soft">
             {formatCurrency(lead.value_cents / 100)}
