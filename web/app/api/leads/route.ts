@@ -7,7 +7,8 @@ export async function GET() {
   const tenant = await getCurrentTenant();
   const { rows } = await pool.query<Lead>(
     `SELECT id, tenant_id, wa_id, nome, source, state, slots, paused, status, closed_reason,
-            closed_at, last_user_at, last_assistant_at, created_at, updated_at
+            closed_at, last_user_at, last_assistant_at, created_at, updated_at,
+            pipeline_stage_id, stage_manual
        FROM leads
       WHERE tenant_id = $1
       ORDER BY updated_at DESC

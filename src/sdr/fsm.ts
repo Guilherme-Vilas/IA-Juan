@@ -17,6 +17,7 @@ import {
   type Slots,
 } from "../core/db.js";
 import { redis, keys } from "../core/redis.js";
+import { syncLeadStage } from "../core/pipeline.js";
 import { config } from "../config.js";
 import { logger } from "../core/logger.js";
 import { executeHandoff, pauseAi } from "./handoff.js";
@@ -603,6 +604,20 @@ export async function runTurn(
 
   if (closedReason) {
     await closeConversation(tenant.id, waId, closedReason);
+  }
+
+  // Reflexo 100% no CRM: a fase canonica que a IA atingiu recalcula a coluna do
+  // lead na pipeline da empresa. Handoff e agendamento sao fases "fortes" que
+  // refletem mesmo sem mudar leads.state. Best-effort — nao trava o turno.
+  const boardPhase: LeadState = closedByHandoff
+    ? "HANDOFF"
+    : closedReason === "scheduled" || workingState === "S5_CONFIRMADO"
+      ? "S5_CONFIRMADO"
+      : workingState;
+  try {
+    await syncLeadStage(tenant.id, lead.id, boardPhase, { actor: "ai", reason: "avanço automático" });
+  } catch (err) {
+    logger.warn({ err, tenant: tenant.slug, waId }, "pipeline: sync falhou (seguindo)");
   }
 
   return { replyText, newState: workingState, closedReason, closedByHandoff };

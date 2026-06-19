@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
   LayoutDashboard,
+  KanbanSquare,
   Calendar,
   BarChart3,
   Settings,
@@ -25,7 +26,7 @@ type NavGroup = { label?: string; items: NavItem[] };
 
 const groups: NavGroup[] = [
   {
-    items: [{ href: "/leads", label: "Visão geral", icon: LayoutDashboard }],
+    items: [{ href: "/leads", label: "Pipeline", icon: KanbanSquare }],
   },
   {
     label: "Operação",

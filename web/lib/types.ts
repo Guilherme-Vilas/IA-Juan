@@ -74,6 +74,48 @@ export type Lead = {
   last_assistant_at: string | null;
   created_at: string;
   updated_at: string;
+  // CRM / pipeline configuravel
+  pipeline_stage_id: number | null;
+  stage_manual: boolean;
+};
+
+// ===== Pipeline configuravel (CRM) =====
+export type PipelineStage = {
+  id: number;
+  pipeline_id: number;
+  name: string;
+  position: number;
+  color: string; // hex (#RRGGBB)
+  trigger_state: LeadState | null; // null = etapa manual (IA nao move)
+  is_won: boolean;
+  is_lost: boolean;
+};
+
+export type CanonicalPhase = { state: LeadState; label: string };
+
+// Fases canonicas da IA (espelha src/core/pipeline.ts). Cada etapa da pipeline
+// mapeia pra no maximo uma destas (trigger_state). null = etapa manual.
+export const PIPELINE_PHASES: CanonicalPhase[] = [
+  { state: "S0_ABERTURA", label: "Novo / abertura" },
+  { state: "S1_DESCOBERTA", label: "Descoberta" },
+  { state: "S2_QUALIFICACAO", label: "Qualificação" },
+  { state: "S3_EDUCACAO", label: "Educação" },
+  { state: "S4_AGENDAMENTO", label: "Agendando" },
+  { state: "S5_CONFIRMADO", label: "Agendado" },
+  { state: "HANDOFF", label: "Atendimento humano" },
+];
+
+export type StageEvent = {
+  id: number;
+  from_stage_id: number | null;
+  to_stage_id: number | null;
+  from_state: string | null;
+  to_state: string | null;
+  actor: "ai" | "human" | "system";
+  reason: string;
+  created_at: string;
+  to_stage_name: string | null;
+  from_stage_name: string | null;
 };
 
 export type Message = {

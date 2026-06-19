@@ -150,6 +150,26 @@ export function agentApi(slug: string) {
   };
 }
 
+export function pipelineApi(slug: string) {
+  return {
+    get: () => adminCall(`/admin/tenants/${slug}/pipeline`, { method: "GET" }),
+    saveStages: (stages: unknown[]) =>
+      adminCall(`/admin/tenants/${slug}/pipeline/stages`, {
+        method: "PUT",
+        body: JSON.stringify({ stages }),
+      }),
+    moveLead: (waId: string, toStageId: number, reason?: string) =>
+      adminCall(`/admin/tenants/${slug}/leads/${waId}/move`, {
+        method: "POST",
+        body: JSON.stringify({ to_stage_id: toStageId, reason }),
+      }),
+    returnToAuto: (waId: string) =>
+      adminCall(`/admin/tenants/${slug}/leads/${waId}/return-to-auto`, { method: "POST" }),
+    stageEvents: (waId: string) =>
+      adminCall(`/admin/tenants/${slug}/leads/${waId}/stage-events`, { method: "GET" }),
+  };
+}
+
 export function knowledgeApi(slug: string) {
   return {
     list: () => adminCall(`/admin/tenants/${slug}/knowledge`, { method: "GET" }),

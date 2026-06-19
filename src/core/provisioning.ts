@@ -6,6 +6,7 @@ import { createEvolutionInstance } from "./evolution.js";
 import { upsertAgentSettings } from "./agent-settings.js";
 import { upsertWorkingHour } from "./internal-calendar.js";
 import { upsertTenantPrompts } from "./tenant-prompts.js";
+import { ensurePipeline } from "./pipeline.js";
 
 export function slugify(s: string): string {
   return s
@@ -95,6 +96,9 @@ export async function createTenantWithSeed(input: ProvisionTenantInput): Promise
   if (input.prompts) {
     await upsertTenantPrompts(tenant.id, input.prompts);
   }
+
+  // Pipeline default (CRM) — 7 etapas canonicas mapeadas 1:1 com as fases da IA.
+  await ensurePipeline(tenant.id);
 
   return tenant;
 }

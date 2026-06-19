@@ -7,8 +7,10 @@ import type { Lead, Message } from "@/lib/types";
 import { Conversation } from "./conversation";
 import { SlotsPanel } from "./slots-panel";
 import { ActionsBar } from "./actions-bar";
+import { StageTimeline } from "./stage-timeline";
 import { Badge } from "@/components/ui/badge";
 import { STATE_COLORS, STATE_LABELS } from "@/lib/types";
+import { Hand } from "lucide-react";
 
 export function LeadDrawer({
   waId,
@@ -81,10 +83,28 @@ export function LeadDrawer({
 
             <ActionsBar lead={lead} onAction={() => { refresh(); onChange(); }} />
 
+            {lead.stage_manual && (
+              <div className="flex items-center gap-2 border-b border-line bg-canvas-surface-2/40 px-6 py-2 text-xs text-ink-muted">
+                <Hand size={13} className="text-accent-bronze" />
+                <span>Fora da automação — você posicionou este lead manualmente.</span>
+                <button
+                  onClick={async () => {
+                    await fetch(`/api/leads/${lead.wa_id}/return-to-auto`, { method: "POST" });
+                    refresh();
+                    onChange();
+                  }}
+                  className="ml-auto rounded-md border border-line px-2 py-1 text-[11px] text-ink-soft hover:bg-canvas-surface-2 hover:text-ink"
+                >
+                  Voltar à automação
+                </button>
+              </div>
+            )}
+
             <Tabs defaultValue="conversa" className="flex flex-1 flex-col overflow-hidden px-6">
               <TabsList>
                 <TabsTrigger value="conversa">Conversa</TabsTrigger>
                 <TabsTrigger value="slots">Qualificação</TabsTrigger>
+                <TabsTrigger value="historico">Histórico</TabsTrigger>
                 <TabsTrigger value="info">Info</TabsTrigger>
               </TabsList>
 
@@ -97,6 +117,9 @@ export function LeadDrawer({
               </TabsContent>
               <TabsContent value="slots" className="flex-1 overflow-y-auto">
                 <SlotsPanel lead={lead} />
+              </TabsContent>
+              <TabsContent value="historico" className="flex-1 overflow-y-auto">
+                <StageTimeline waId={lead.wa_id} />
               </TabsContent>
               <TabsContent value="info" className="flex-1 overflow-y-auto text-sm">
                 <Info lead={lead} />
