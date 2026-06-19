@@ -1,111 +1,53 @@
 import type { ToolDef } from "../core/llm.js";
 
+// Descrições propositalmente curtas: o schema de tools vai em TODA chamada do
+// modelo (2x por turno), então cada palavra aqui é token recorrente.
 export const SDR_TOOLS: ToolDef[] = [
   {
     type: "function",
     function: {
       name: "save_slots",
       description:
-        "Salva informações de qualificação coletadas do lead. IMPORTANTE: só chame quando tiver pelo menos 1 valor CONCRETO extraído da conversa. NUNCA envie campos vazios, null ou strings em branco. Se não souber um campo, simplesmente não inclua ele.",
+        "Salva dados de qualificação ditos pelo lead. Só chame com ao menos 1 valor concreto. NUNCA envie campo vazio/null — se não souber, omita.",
       parameters: {
         type: "object",
         properties: {
-          nome: { type: "string", description: "Nome/apelido do lead (só envie se o lead disse)" },
-          profissao: {
-            type: "string",
-            description:
-              "Com o que o lead trabalha (texto livre curto, ex: 'dentista', 'engenheiro civil', 'sócio de restaurante'). Só envie quando o lead disser.",
-          },
+          nome: { type: "string", description: "nome/apelido do lead" },
+          profissao: { type: "string", description: "profissão (texto curto)" },
           renda_aproximada: {
             type: "string",
-            description:
-              "Faixa de renda mensal do lead. Valores esperados: '4-8k', '8-15k', '15-25k', '25k+', ou texto livre curto se o lead disse outra coisa. Só envie quando o lead indicar.",
+            description: "faixa de renda mensal: '4-8k','8-15k','15-25k','25k+'",
           },
-          modelo_carro: {
-            type: "string",
-            description:
-              "Modelo/marca do carro pretendido (texto livre, ex: 'Compass', 'BMW X3', 'HB20'). Só envie quando interesse for 'auto' e o lead mencionar.",
-          },
-          interesse: {
-            type: "string",
-            description:
-              "Tipo de bem/uso. Valores esperados: 'imovel', 'auto', 'investimento' ou 'outro'. Só envie quando souber.",
-          },
-          capacidade_mensal: {
-            type: "number",
-            description:
-              "Parcela suportada por mês em R$ (número, sem pontuação). Use quando o lead disser uma parcela específica ou faixa de parcela.",
-          },
-          valor_bem: {
-            type: "number",
-            description: "Valor do bem/carta que o lead quer em R$",
-          },
-          prazo_meses: { type: "number", description: "Prazo em meses que o lead considera" },
-          intencao_lance: {
-            type: "boolean",
-            description: "Se o lead tem reserva/intenção de dar lance (true/false)",
-          },
-          sabe_consorcio: {
-            type: "boolean",
-            description: "Lead demonstra clareza do que é consórcio e como funciona",
-          },
+          modelo_carro: { type: "string", description: "modelo/marca do carro (se interesse=auto)" },
+          interesse: { type: "string", description: "'imovel'|'auto'|'investimento'|'outro'" },
+          capacidade_mensal: { type: "number", description: "parcela suportada/mês em R$ (número)" },
+          valor_bem: { type: "number", description: "valor do bem/carta em R$" },
+          prazo_meses: { type: "number", description: "prazo em meses" },
+          intencao_lance: { type: "boolean", description: "tem reserva/intenção de lance" },
+          sabe_consorcio: { type: "boolean", description: "entende como consórcio funciona" },
           prazo_decisao: {
             type: "string",
-            description:
-              "Quando pretende decidir/fechar. Valores sugeridos: 'proximos_meses', 'sem_pressa', 'indefinido' — ou texto livre curto.",
+            description: "'proximos_meses'|'sem_pressa'|'indefinido' ou texto curto",
           },
-          fecha_se_proposta_boa: {
-            type: "boolean",
-            description:
-              "Se o lead disse que fecharia se a proposta fosse adequada (compromisso real)",
-          },
-          decisao_com_conjuge: {
-            type: "boolean",
-            description: "true = decide com cônjuge/parceiro; false = decide sozinho",
-          },
-          mora_exterior: {
-            type: "boolean",
-            description: "true se o lead é brasileiro morando no exterior",
-          },
-          // ===== Imobiliario (tenant Facilita/Apolar) =====
-          entrada_disponivel: {
-            type: "number",
-            description:
-              "R$ disponíveis pra entrada do imóvel (FGTS + recursos próprios + saldo etc). Só envie se o lead disser um valor concreto.",
-          },
-          usa_fgts: {
-            type: "boolean",
-            description: "Vai usar saldo do FGTS na entrada/lance (true) ou não (false).",
-          },
+          fecha_se_proposta_boa: { type: "boolean", description: "fecharia com proposta adequada" },
+          decisao_com_conjuge: { type: "boolean", description: "decide com cônjuge (true) ou sozinho (false)" },
+          mora_exterior: { type: "boolean", description: "brasileiro morando no exterior" },
+          entrada_disponivel: { type: "number", description: "R$ disponíveis p/ entrada do imóvel" },
+          usa_fgts: { type: "boolean", description: "usa FGTS na entrada/lance" },
           finalidade: {
             type: "string",
             enum: ["moradia", "investimento", "renda_locacao"],
-            description:
-              "Pra que vai usar o imóvel: 'moradia' (vai morar), 'investimento' (compra pra ganho de capital/revenda), 'renda_locacao' (compra pra alugar).",
+            description: "uso do imóvel",
           },
           tipo_imovel: {
             type: "string",
             enum: ["lancamento", "usado", "comercial"],
-            description:
-              "Tipo do imóvel: 'lancamento' (novo/planta), 'usado' (revenda), 'comercial' (sala/loja).",
+            description: "tipo do imóvel",
           },
-          regiao_interesse: {
-            type: "string",
-            description: "Bairro ou região que o lead quer (texto livre curto).",
-          },
-          pretende_financiar: {
-            type: "boolean",
-            description:
-              "true se pretende financiar parte do imóvel; false se vai à vista/recursos próprios.",
-          },
-          ja_visitou_imovel: {
-            type: "boolean",
-            description: "true se o lead já visitou esse imóvel ou outros similares com algum corretor.",
-          },
-          observacoes: {
-            type: "string",
-            description: "Observação livre relevante (anotação pro corretor).",
-          },
+          regiao_interesse: { type: "string", description: "bairro/região desejada" },
+          pretende_financiar: { type: "boolean", description: "vai financiar parte do imóvel" },
+          ja_visitou_imovel: { type: "boolean", description: "já visitou imóveis com corretor" },
+          observacoes: { type: "string", description: "anotação livre relevante" },
         },
         additionalProperties: false,
       },
@@ -115,13 +57,10 @@ export const SDR_TOOLS: ToolDef[] = [
     type: "function",
     function: {
       name: "request_handoff",
-      description:
-        "Chame quando o lead pedir explicitamente pra falar com humano, ficar bravo, sair do escopo de forma séria, ou quando a conversa travou.",
+      description: "Lead pediu humano, ficou bravo, saiu do escopo sério, ou a conversa travou.",
       parameters: {
         type: "object",
-        properties: {
-          motivo: { type: "string", description: "Motivo curto do handoff" },
-        },
+        properties: { motivo: { type: "string", description: "motivo curto" } },
         required: ["motivo"],
       },
     },
@@ -131,15 +70,14 @@ export const SDR_TOOLS: ToolDef[] = [
     function: {
       name: "close_conversation",
       description:
-        "Encerra a conversa (marca status=closed). Chame apenas quando: (a) o lead disser claramente que NÃO tem interesse ou 'não quero mais', (b) pedir para conversar em outro dia/depois/semana que vem (adiamento explícito), ou (c) mandar encerrar. NÃO chame se o lead só sumiu no meio da conversa — nesse caso deixe em aberto para os follow-ups automáticos.",
+        "Encerra a conversa. Só quando: (a) lead diz claramente que não quer, ou (b) pede pra falar depois (adiamento explícito). NÃO chame se o lead só sumiu.",
       parameters: {
         type: "object",
         properties: {
           reason: {
             type: "string",
             enum: ["not_interested", "postponed"],
-            description:
-              "'not_interested' quando o lead não quer; 'postponed' quando pediu para falar em outro momento.",
+            description: "'not_interested' = não quer; 'postponed' = falar depois",
           },
         },
         required: ["reason"],
@@ -150,8 +88,7 @@ export const SDR_TOOLS: ToolDef[] = [
     type: "function",
     function: {
       name: "propose_schedule",
-      description:
-        "Chame quando o lead estiver qualificado e topar marcar conversa. A orquestração busca horários livres no Google Calendar e devolve as opções pra você oferecer.",
+      description: "Lead qualificado e topou marcar. A orquestração busca horários e devolve as opções.",
       parameters: { type: "object", properties: {}, additionalProperties: false },
     },
   },
@@ -159,17 +96,12 @@ export const SDR_TOOLS: ToolDef[] = [
     type: "function",
     function: {
       name: "confirm_schedule",
-      description:
-        "Chame quando o lead escolher um dos horários que você ofereceu E disser o canal preferido. Passe o índice (0-based) do slot e o canal.",
+      description: "Lead escolheu um horário oferecido e o canal. Passe o índice (0-based) e o canal.",
       parameters: {
         type: "object",
         properties: {
-          slot_index: { type: "integer", description: "Índice do slot escolhido (0, 1, 2...)" },
-          channel: {
-            type: "string",
-            enum: ["ligacao", "video"],
-            description: "Canal preferido: 'ligacao' (telefone) ou 'video' (vídeo chamada)",
-          },
+          slot_index: { type: "integer", description: "índice do slot (0,1,2...)" },
+          channel: { type: "string", enum: ["ligacao", "video"], description: "canal preferido" },
         },
         required: ["slot_index", "channel"],
       },
@@ -197,19 +129,12 @@ export const SDR_TOOLS: ToolDef[] = [
     function: {
       name: "consultar_parcela",
       description:
-        "Checagem INTERNA: verifica se uma faixa de carta cabe no perfil. NUNCA mencione números de parcela ao lead. Esta tool serve apenas pra você (Stella) saber qualitativamente se o valor cabe ou se precisa calibrar o lead pra cima.",
+        "Checagem INTERNA: vê se uma faixa de carta cabe no perfil. NUNCA mencione parcela ao lead — só pra você saber se cabe ou calibrar pra cima.",
       parameters: {
         type: "object",
         properties: {
-          valor_carta: {
-            type: "number",
-            description: "Valor da carta de crédito em R$ (ex: 400000)",
-          },
-          tipo: {
-            type: "string",
-            enum: ["imovel", "auto"],
-            description: "Tipo do bem (opcional; se souber)",
-          },
+          valor_carta: { type: "number", description: "valor da carta em R$ (ex: 400000)" },
+          tipo: { type: "string", enum: ["imovel", "auto"], description: "tipo do bem (se souber)" },
         },
         required: ["valor_carta"],
       },
@@ -224,20 +149,17 @@ export const PROPERTY_TOOL: ToolDef = {
   function: {
     name: "buscar_imoveis",
     description:
-      "Busca imóveis no catálogo da imobiliária que batem com o perfil do lead. Use quando o lead indicar finalidade/região/orçamento e você quiser sugerir opções REAIS. Apresente 2-3 de forma natural (não despeje a lista crua) e ofereça agendar uma visita.",
+      "Busca imóveis no catálogo que batem com o perfil do lead. Use quando ele indicar finalidade/região/orçamento. Apresente 2-3 de forma natural e ofereça visita.",
     parameters: {
       type: "object",
       properties: {
         transaction: { type: "string", enum: ["venda", "locacao"], description: "venda ou locação" },
-        type: {
-          type: "string",
-          description: "tipo do imóvel (apartamento, casa, terreno, comercial...)",
-        },
-        max_preco: { type: "number", description: "orçamento máximo em R$ (número, sem pontuação)" },
-        min_quartos: { type: "integer", description: "mínimo de quartos/dormitórios" },
-        vagas: { type: "integer", description: "mínimo de vagas de garagem" },
-        cidade: { type: "string", description: "cidade desejada" },
-        bairro: { type: "string", description: "bairro/região desejada" },
+        type: { type: "string", description: "tipo (apartamento, casa, terreno, comercial...)" },
+        max_preco: { type: "number", description: "orçamento máximo em R$" },
+        min_quartos: { type: "integer", description: "mínimo de quartos" },
+        vagas: { type: "integer", description: "mínimo de vagas" },
+        cidade: { type: "string", description: "cidade" },
+        bairro: { type: "string", description: "bairro/região" },
       },
       additionalProperties: false,
     },

@@ -2,7 +2,21 @@
   "permissions": {
     "allow": [
       "Bash(netstat -ano)",
-      "Bash(docker compose:*)"
+      "Bash(docker compose:*)",
+      "Bash(git add *)",
+      "Bash(git commit -m 'fix\\(web\\): explicit @ alias via webpack for production build *)",
+      "Bash(git push *)",
+      "Bash(curl -s -H \"apikey: tdOPBsxOJqXwvJdT\" http://evo-juan.187.77.94.58.sslip.io:8080/webhook/find/juan)",
+      "Bash(git commit -m 'fix\\(evolution\\): disable global webhook to fix dispatch in prod *)",
+      "Bash(git commit *)",
+      "Bash(npm run *)",
+      "Bash(cd \"c:/Users/guilh/Documents/InfraCommerce/ifc-dashboards-hub\" && ls static/brand/ && echo \"---\" && ls templates/dashboards/ 2>&1 | head -20)",
+      "Read(//c/Users/guilh/Documents/InfraCommerce/ifc-dashboards-hub/**)",
+      "Bash(npm install *)",
+      "Bash(node -e \"console.log\\(require\\('./node_modules/@fastify/jwt/package.json'\\).version\\)\")",
+      "Bash(npx tsx *)",
+      "Bash(npx tsc *)",
+      "Bash(node -e \"const p=require\\('./package.json'\\); console.log\\('xlsx', p.dependencies.xlsx, '| pdf-parse', p.dependencies['pdf-parse'], '| @types/pdf-parse', \\(p.devDependencies||{}\\)['@types/pdf-parse']\\)\")"
     ]
   }
 }

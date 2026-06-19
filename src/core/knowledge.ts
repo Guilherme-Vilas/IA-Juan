@@ -169,13 +169,9 @@ export async function retrieveRelevant(
 // Monta o bloco de contexto pra injetar no system prompt.
 export function formatKnowledgeContext(chunks: RetrievedChunk[]): string {
   if (chunks.length === 0) return "";
+  // Trunca cada chunk pra limitar tokens (chunks podem ter ~1200 chars).
   const blocks = chunks
-    .map((c, i) => `[${i + 1}] (fonte: ${c.title})\n${c.content}`)
+    .map((c, i) => `[${i + 1}] (${c.title})\n${c.content.slice(0, 800)}`)
     .join("\n\n");
-  return (
-    "# Base de conhecimento (use SÓ se for relevante à pergunta do lead)\n" +
-    "Informações atualizadas cadastradas pelo cliente. Se a resposta estiver aqui, use-a com prioridade. " +
-    "Se não houver nada relevante, ignore esta seção e siga o conhecimento base.\n\n" +
-    blocks
-  );
+  return "# Base de conhecimento (use só se for relevante)\n" + blocks;
 }

@@ -50,6 +50,19 @@ async function loadHistory(tenantSlug: string, waId: string): Promise<ChatMessag
     .filter((x): x is ChatMessage => !!x);
 }
 
+// Heurística barata: só vale acionar o RAG (custa tokens + embedding) quando a
+// mensagem parece uma PERGUNTA/tema de FAQ. Respostas curtas de qualificação
+// ("sim", "João", "3 quartos") não disparam a base de conhecimento.
+const KB_KEYWORDS =
+  /\b(qual|quais|quant|como|onde|quando|porqu|por que|pode|posso|tem |teria|existe|funciona|valor|preç|preco|taxa|juros|documenta|prazo|garantia|aceita|condi|difere|diferenç|inclui|cobertura|requisito|financ|entrada|parcel|fgts|consorci|carta|lance|contempl|reajuste|seguro)\b/;
+function shouldUseKnowledge(text: string): boolean {
+  const s = (text ?? "").toLowerCase().trim();
+  if (!s) return false;
+  if (s.includes("?")) return true;
+  if (KB_KEYWORDS.test(s)) return true;
+  return s.length >= 40; // mensagens longas tendem a ser substantivas
+}
+
 function buildSystemPrompt(
   prompts: TenantPrompts,
   lead: LeadRow,
@@ -58,21 +71,13 @@ function buildSystemPrompt(
   knowledgeContext?: string,
   stageGoal?: string,
 ): string {
-  const extra = contextFor(prompts, lead.state);
-  const parts = [prompts.system];
-  if (extra) {
-    parts.push("", "---", "", "# Contexto adicional pra este estado", extra);
-  }
-  // Objetivo definido pela empresa pra etapa atual do lead na pipeline (CRM).
-  if (stageGoal) {
-    parts.push("", "---", "", "# Objetivo nesta etapa da pipeline", stageGoal);
-  }
-  // Base de conhecimento (RAG) — chunks recuperados relevantes à pergunta do lead.
-  if (knowledgeContext) {
-    parts.push("", "---", "", knowledgeContext);
-  }
+  // ===== BLOCO ESTÁVEL =====
+  // Persona + config do tenant + regra de estilo. É IDÊNTICO entre os turnos de
+  // um tenant, então a OpenAI cacheia esse prefixo (−50% no input). Por isso ele
+  // vem PRIMEIRO e tudo que muda por turno/lead vai pro bloco variável no fim.
+  const stable: string[] = [prompts.system];
   if (agentSettings) {
-    parts.push(
+    stable.push(
       "",
       "---",
       "",
@@ -85,10 +90,15 @@ function buildSystemPrompt(
       `- regras de handoff: ${agentSettings.handoff_rules || "seguir prompt base"}`,
     );
   }
-  parts.push(
-    "",
-    "---",
-    "",
+  stable.push("", "Curto. Consultora, não formulário. Nunca escreva <function> ou JSON no texto.");
+
+  // ===== BLOCO VARIÁVEL (muda por turno/lead — não cacheado; vem por último) =====
+  const variable: string[] = [];
+  const extra = contextFor(prompts, lead.state);
+  if (extra) variable.push("# Contexto adicional pra este estado", extra, "");
+  if (stageGoal) variable.push("# Objetivo nesta etapa da pipeline", stageGoal, "");
+  if (knowledgeContext) variable.push(knowledgeContext, "");
+  variable.push(
     "# Contexto do lead",
     `- estado (meta atual): ${lead.state}`,
     `- slots: ${JSON.stringify(lead.slots)}`,
@@ -108,7 +118,7 @@ function buildSystemPrompt(
       no_response:
         "Lead tinha ficado SEM RESPONDER e a conversa foi fechada por inatividade. Voltou agora. Recebe sem cobrança ('oi! que bom que apareceu — em que posso te ajudar?').",
     };
-    parts.push(
+    variable.push(
       "",
       "## ⚠️ RETORNO de conversa fechada",
       `Esta conversa estava fechada com motivo: \`${reopenedFrom}\`.`,
@@ -116,11 +126,7 @@ function buildSystemPrompt(
     );
   }
 
-  parts.push(
-    "",
-    "Curto. Consultora, não formulário. Nunca escreva <function> ou JSON no texto.",
-  );
-  return parts.join("\n");
+  return stable.join("\n") + "\n\n---\n\n" + variable.join("\n");
 }
 
 function normalizeInteresse(v: unknown): Slots["interesse"] | undefined {
@@ -352,20 +358,20 @@ export async function runTurn(
     await pushHistory(tenant.slug, waId, "user", userText);
   }
 
-  // RAG: recupera trechos relevantes da base de conhecimento do tenant pra
-  // pergunta atual do lead. Best-effort — se falhar, segue sem (nao trava o turno).
+  // RAG: SÓ aciona quando a mensagem parece pergunta/tema de FAQ — economiza
+  // tokens (e a chamada de embedding) na maioria dos turnos, que são respostas
+  // curtas de qualificação. k=3, minScore alto e chunks truncados no formatador.
   let knowledgeContext = "";
-  try {
-    const queryForKb = (userText || (await loadHistory(tenant.slug, waId)).slice(-1)[0]?.content || "").slice(0, 500);
-    if (queryForKb) {
-      const chunks = await retrieveRelevant(tenant.id, queryForKb, 4);
+  if (shouldUseKnowledge(userText)) {
+    try {
+      const chunks = await retrieveRelevant(tenant.id, userText.slice(0, 400), 3, 0.38);
       knowledgeContext = formatKnowledgeContext(chunks);
       if (chunks.length) {
         logger.debug({ tenant: tenant.slug, waId, hits: chunks.length }, "rag: knowledge injected");
       }
+    } catch (err) {
+      logger.warn({ err, tenant: tenant.slug, waId }, "rag: retrieval failed (continuing without)");
     }
-  } catch (err) {
-    logger.warn({ err, tenant: tenant.slug, waId }, "rag: retrieval failed (continuing without)");
   }
 
   const stageGoal = await getStageGoalForLead(tenant.id, lead.id).catch(() => "");
@@ -396,6 +402,7 @@ export async function runTurn(
         tools: useTools ? toolsForTurn : undefined,
         temperature: 0.4,
         maxTokens: 350,
+        tag: tenant.slug,
       });
     } catch (err) {
       const errMsg = String((err as Error)?.message ?? err ?? "");
@@ -622,7 +629,7 @@ export async function runTurn(
         role: "system",
         content: "Agora responda ao lead em linguagem natural, em português, 1-3 linhas. NÃO use tags <function>, NÃO escreva JSON. Apenas o texto que o lead vai ler.",
       });
-      const retry = await chat({ model: "main", messages, temperature: 0.4, maxTokens: 300 });
+      const retry = await chat({ model: "main", messages, temperature: 0.4, maxTokens: 300, tag: tenant.slug });
       const retryText = (retry.message.content ?? "").trim();
       replyText = sanitizeReply(retryText).clean || null;
     }

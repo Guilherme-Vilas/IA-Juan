@@ -42,7 +42,27 @@ type ChatOpts = {
   tools?: ToolDef[];
   temperature?: number;
   maxTokens?: number;
+  // Rótulo p/ medir consumo de tokens por origem (ex: slug do tenant).
+  tag?: string;
 };
+
+// Loga consumo de tokens (input/output/cacheados) pra medir custo real.
+function logUsage(tag: string | undefined, model: string, usage: unknown, ms: number) {
+  const u = usage as
+    | { prompt_tokens?: number; completion_tokens?: number; prompt_tokens_details?: { cached_tokens?: number } }
+    | undefined;
+  logger.info(
+    {
+      tag,
+      model,
+      in: u?.prompt_tokens,
+      out: u?.completion_tokens,
+      cached: u?.prompt_tokens_details?.cached_tokens ?? 0,
+      ms,
+    },
+    "openai.usage",
+  );
+}
 
 async function callOpenAI(model: string, opts: ChatOpts) {
   const started = Date.now();
@@ -53,7 +73,7 @@ async function callOpenAI(model: string, opts: ChatOpts) {
     temperature: opts.temperature ?? 0.4,
     max_tokens: opts.maxTokens ?? 700,
   });
-  logger.debug({ model, ms: Date.now() - started }, "openai.chat");
+  logUsage(opts.tag, model, res.usage, Date.now() - started);
   return res.choices[0]!;
 }
 
@@ -82,9 +102,10 @@ export async function chat(opts: ChatOpts) {
 // importador universal de documentos (normaliza dados de qualquer formato).
 export async function extractJson<T = unknown>(
   messages: ChatMessage[],
-  opts: { maxTokens?: number; temperature?: number } = {},
+  opts: { maxTokens?: number; temperature?: number; tag?: string } = {},
 ): Promise<T> {
   const model = config.OPENAI_MODEL_MAIN;
+  const started = Date.now();
   const res = await openai.chat.completions.create({
     model,
     messages: messages as never,
@@ -92,6 +113,7 @@ export async function extractJson<T = unknown>(
     max_tokens: opts.maxTokens ?? 4000,
     response_format: { type: "json_object" },
   });
+  logUsage(opts.tag ?? "extract", model, res.usage, Date.now() - started);
   const text = res.choices[0]?.message?.content ?? "{}";
   return JSON.parse(text) as T;
 }
