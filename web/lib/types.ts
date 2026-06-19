@@ -77,6 +77,11 @@ export type Lead = {
   // CRM / pipeline configuravel
   pipeline_stage_id: number | null;
   stage_manual: boolean;
+  // Fase 2: desfecho + relogio de etapa
+  outcome: "won" | "lost" | null;
+  outcome_reason: string;
+  outcome_at: string | null;
+  stage_entered_at: string;
 };
 
 // ===== Pipeline configuravel (CRM) =====
@@ -89,6 +94,8 @@ export type PipelineStage = {
   trigger_state: LeadState | null; // null = etapa manual (IA nao move)
   is_won: boolean;
   is_lost: boolean;
+  sla_hours: number | null; // horas ate "esfriar" (null = sem SLA)
+  ai_goal: string; // objetivo que a IA persegue nesta etapa
 };
 
 export type CanonicalPhase = { state: LeadState; label: string };

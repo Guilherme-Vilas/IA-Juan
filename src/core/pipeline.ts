@@ -39,6 +39,8 @@ export type PipelineStageRow = {
   trigger_state: string | null;
   is_won: boolean;
   is_lost: boolean;
+  sla_hours: number | null;
+  ai_goal: string;
 };
 
 export type StageActor = "ai" | "human" | "system";
@@ -161,10 +163,12 @@ export async function syncLeadStage(
   if (!target) return null; // fase sem coluna mapeada -> nao move
   if (target.id === lead.pipeline_stage_id) return target; // ja esta la
 
-  await pool.query(`UPDATE leads SET pipeline_stage_id = $1, updated_at = now() WHERE id = $2`, [
-    target.id,
-    leadId,
-  ]);
+  // Reinicia o relogio de etapa (tempo-em-etapa/SLA) e zera o alerta.
+  await pool.query(
+    `UPDATE leads SET pipeline_stage_id = $1, stage_entered_at = now(), sla_alerted_at = NULL, updated_at = now()
+      WHERE id = $2`,
+    [target.id, leadId],
+  );
   await logStageEvent({
     tenantId,
     leadId,
@@ -206,14 +210,33 @@ export async function moveLeadManual(
   if (!stage) return { ok: false, error: "stage not found" };
 
   const mapped = stage.trigger_state != null;
+  const terminal = stage.is_won || stage.is_lost;
+  // Desfecho comercial: ao cair numa coluna Ganho/Perdido, registra o resultado
+  // e pausa a IA (deal fechado nao recebe mais follow-up automatico). Ao voltar
+  // pra uma coluna normal, limpa o desfecho (lead reentrou no funil).
+  const outcome = stage.is_won ? "won" : stage.is_lost ? "lost" : null;
   await pool.query(
     `UPDATE leads
         SET pipeline_stage_id = $1,
             stage_manual = $2,
             state = COALESCE($3, state),
+            stage_entered_at = now(),
+            sla_alerted_at = NULL,
+            outcome = $4,
+            outcome_reason = CASE WHEN $4 IS NULL THEN '' ELSE COALESCE($5,'') END,
+            outcome_at = CASE WHEN $4 IS NULL THEN NULL ELSE now() END,
+            paused = CASE WHEN $6 THEN true ELSE paused END,
             updated_at = now()
-      WHERE id = $4`,
-    [stage.id, !mapped, mapped ? stage.trigger_state : null, lead.id],
+      WHERE id = $7`,
+    [
+      stage.id,
+      !mapped,
+      mapped ? stage.trigger_state : null,
+      outcome,
+      opts.reason ?? null,
+      terminal,
+      lead.id,
+    ],
   );
 
   await logStageEvent({
@@ -251,6 +274,8 @@ export type StageInput = {
   trigger_state?: string | null;
   is_won?: boolean;
   is_lost?: boolean;
+  sla_hours?: number | null;
+  ai_goal?: string;
 };
 
 export async function replaceStages(
@@ -292,17 +317,24 @@ export async function replaceStages(
         await client.query(
           `UPDATE pipeline_stages
               SET name = $1, position = $2, color = COALESCE($3,color),
-                  trigger_state = $4, is_won = COALESCE($5,is_won), is_lost = COALESCE($6,is_lost)
-            WHERE id = $7 AND pipeline_id = $8`,
-          [s.name, pos, s.color ?? null, s.trigger_state ?? null, s.is_won ?? null, s.is_lost ?? null, s.id, pipelineId],
+                  trigger_state = $4, is_won = COALESCE($5,is_won), is_lost = COALESCE($6,is_lost),
+                  sla_hours = $7, ai_goal = COALESCE($8,ai_goal)
+            WHERE id = $9 AND pipeline_id = $10`,
+          [
+            s.name, pos, s.color ?? null, s.trigger_state ?? null, s.is_won ?? null, s.is_lost ?? null,
+            s.sla_hours ?? null, s.ai_goal ?? null, s.id, pipelineId,
+          ],
         );
         keepIds.add(s.id);
       } else {
         const ins = await client.query<{ id: number }>(
-          `INSERT INTO pipeline_stages (pipeline_id, name, position, color, trigger_state, is_won, is_lost)
-           VALUES ($1,$2,$3,COALESCE($4,'#71717A'),$5,COALESCE($6,false),COALESCE($7,false))
+          `INSERT INTO pipeline_stages (pipeline_id, name, position, color, trigger_state, is_won, is_lost, sla_hours, ai_goal)
+           VALUES ($1,$2,$3,COALESCE($4,'#71717A'),$5,COALESCE($6,false),COALESCE($7,false),$8,COALESCE($9,''))
            RETURNING id`,
-          [pipelineId, s.name, pos, s.color ?? null, s.trigger_state ?? null, s.is_won ?? null, s.is_lost ?? null],
+          [
+            pipelineId, s.name, pos, s.color ?? null, s.trigger_state ?? null, s.is_won ?? null, s.is_lost ?? null,
+            s.sla_hours ?? null, s.ai_goal ?? null,
+          ],
         );
         keepIds.add(ins.rows[0]!.id);
       }
@@ -352,6 +384,20 @@ export type StageEventRow = {
   to_stage_name: string | null;
   from_stage_name: string | null;
 };
+
+// Objetivo da IA na etapa ATUAL do lead (a coluna onde ele esta no board).
+// Reflete tanto etapas automaticas quanto manuais -> a IA persegue a meta da
+// coluna em que a empresa colocou o lead.
+export async function getStageGoalForLead(tenantId: number, leadId: number): Promise<string> {
+  const { rows } = await pool.query<{ ai_goal: string }>(
+    `SELECT ps.ai_goal
+       FROM leads l
+       JOIN pipeline_stages ps ON ps.id = l.pipeline_stage_id
+      WHERE l.id = $1 AND l.tenant_id = $2`,
+    [leadId, tenantId],
+  );
+  return (rows[0]?.ai_goal ?? "").trim();
+}
 
 export async function listStageEvents(tenantId: number, waId: string, limit = 50): Promise<StageEventRow[]> {
   const { rows } = await pool.query<StageEventRow>(

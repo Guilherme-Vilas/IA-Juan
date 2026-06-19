@@ -37,8 +37,14 @@ export async function registerPipelineRoutes(app: FastifyInstance) {
           name: s.name.trim(),
           color: s.color,
           trigger_state: s.trigger_state ?? null,
-          is_won: s.is_won,
-          is_lost: s.is_lost,
+          // Ganho e Perdido sao mutuamente exclusivos.
+          is_won: !!s.is_won && !s.is_lost,
+          is_lost: !!s.is_lost,
+          sla_hours:
+            s.sla_hours === null || s.sla_hours === undefined || Number.isNaN(Number(s.sla_hours))
+              ? null
+              : Math.max(1, Math.round(Number(s.sla_hours))),
+          ai_goal: typeof s.ai_goal === "string" ? s.ai_goal : undefined,
         }));
       const res = await replaceStages(req.tenantId!, clean);
       if (!res.ok) return reply.code(400).send({ error: res.error });

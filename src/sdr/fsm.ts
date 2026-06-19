@@ -17,7 +17,7 @@ import {
   type Slots,
 } from "../core/db.js";
 import { redis, keys } from "../core/redis.js";
-import { syncLeadStage } from "../core/pipeline.js";
+import { syncLeadStage, getStageGoalForLead } from "../core/pipeline.js";
 import { config } from "../config.js";
 import { logger } from "../core/logger.js";
 import { executeHandoff, pauseAi } from "./handoff.js";
@@ -53,11 +53,16 @@ function buildSystemPrompt(
   agentSettings?: AgentSettingsRow | null,
   reopenedFrom?: ClosedReason | null,
   knowledgeContext?: string,
+  stageGoal?: string,
 ): string {
   const extra = contextFor(prompts, lead.state);
   const parts = [prompts.system];
   if (extra) {
     parts.push("", "---", "", "# Contexto adicional pra este estado", extra);
+  }
+  // Objetivo definido pela empresa pra etapa atual do lead na pipeline (CRM).
+  if (stageGoal) {
+    parts.push("", "---", "", "# Objetivo nesta etapa da pipeline", stageGoal);
   }
   // Base de conhecimento (RAG) — chunks recuperados relevantes à pergunta do lead.
   if (knowledgeContext) {
@@ -344,8 +349,10 @@ export async function runTurn(
     logger.warn({ err, tenant: tenant.slug, waId }, "rag: retrieval failed (continuing without)");
   }
 
+  const stageGoal = await getStageGoalForLead(tenant.id, lead.id).catch(() => "");
+
   const history = await loadHistory(tenant.slug, waId);
-  const systemPrompt = buildSystemPrompt(prompts, lead, agentSettings, reopenedFrom, knowledgeContext);
+  const systemPrompt = buildSystemPrompt(prompts, lead, agentSettings, reopenedFrom, knowledgeContext, stageGoal);
 
   const messages: ChatMessage[] = [{ role: "system", content: systemPrompt }, ...history];
 

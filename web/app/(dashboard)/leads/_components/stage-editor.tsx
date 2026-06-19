@@ -3,16 +3,25 @@
 import { useState } from "react";
 import { PIPELINE_PHASES, type PipelineStage, type LeadState } from "@/lib/types";
 import { Button } from "@/components/ui/button";
-import { X, Plus, ArrowUp, ArrowDown, Trash2, GripVertical } from "lucide-react";
+import { X, Plus, ArrowUp, ArrowDown, Trash2, GripVertical, ChevronDown, ChevronRight } from "lucide-react";
 
+type Outcome = "normal" | "won" | "lost";
 type Draft = {
   id?: number;
   name: string;
   color: string;
   trigger_state: LeadState | null;
+  is_won: boolean;
+  is_lost: boolean;
+  sla_hours: number | null;
+  ai_goal: string;
 };
 
 const PALETTE = ["#71717A", "#60A5FA", "#22D3EE", "#FBBF24", "#C9A876", "#4ADE80", "#F87171", "#A78BFA"];
+
+function outcomeOf(d: Draft): Outcome {
+  return d.is_won ? "won" : d.is_lost ? "lost" : "normal";
+}
 
 export function StageEditor({
   stages,
@@ -24,13 +33,31 @@ export function StageEditor({
   onSaved: (stages: PipelineStage[]) => void;
 }) {
   const [drafts, setDrafts] = useState<Draft[]>(
-    stages.map((s) => ({ id: s.id, name: s.name, color: s.color, trigger_state: s.trigger_state })),
+    stages.map((s) => ({
+      id: s.id,
+      name: s.name,
+      color: s.color,
+      trigger_state: s.trigger_state,
+      is_won: s.is_won,
+      is_lost: s.is_lost,
+      sla_hours: s.sla_hours,
+      ai_goal: s.ai_goal ?? "",
+    })),
   );
+  const [expanded, setExpanded] = useState<number | null>(null);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
   const update = (i: number, patch: Partial<Draft>) =>
     setDrafts((d) => d.map((s, idx) => (idx === i ? { ...s, ...patch } : s)));
+
+  const setOutcome = (i: number, o: Outcome) =>
+    update(i, {
+      is_won: o === "won",
+      is_lost: o === "lost",
+      // colunas terminais sao manuais (a IA nao move pra elas).
+      trigger_state: o === "normal" ? drafts[i]!.trigger_state : null,
+    });
 
   const move = (i: number, dir: -1 | 1) =>
     setDrafts((d) => {
@@ -46,10 +73,17 @@ export function StageEditor({
   const add = () =>
     setDrafts((d) => [
       ...d,
-      { name: "Nova etapa", color: PALETTE[d.length % PALETTE.length]!, trigger_state: null },
+      {
+        name: "Nova etapa",
+        color: PALETTE[d.length % PALETTE.length]!,
+        trigger_state: null,
+        is_won: false,
+        is_lost: false,
+        sla_hours: null,
+        ai_goal: "",
+      },
     ]);
 
-  // Fases ja usadas por OUTRA etapa (pra evitar mapeamento duplicado).
   const usedBy = (i: number, phase: LeadState) =>
     drafts.some((s, idx) => idx !== i && s.trigger_state === phase);
 
@@ -76,7 +110,7 @@ export function StageEditor({
   return (
     <div className="fixed inset-0 z-50 grid place-items-center bg-black/60 p-4" onClick={onClose}>
       <div
-        className="flex max-h-[85vh] w-full max-w-2xl flex-col rounded-xl border border-line bg-canvas-surface shadow-elevated"
+        className="flex max-h-[88vh] w-full max-w-2xl flex-col rounded-xl border border-line bg-canvas-surface shadow-elevated"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center justify-between border-b border-line px-6 py-4">
@@ -93,53 +127,114 @@ export function StageEditor({
 
         <div className="flex-1 overflow-y-auto px-6 py-4">
           <div className="space-y-2">
-            {drafts.map((s, i) => (
-              <div key={i} className="flex items-center gap-2 rounded-lg border border-line bg-canvas-deep p-2.5">
-                <GripVertical size={15} className="shrink-0 text-ink-faint" />
-                <input
-                  type="color"
-                  value={s.color}
-                  onChange={(e) => update(i, { color: e.target.value })}
-                  className="h-7 w-7 shrink-0 cursor-pointer rounded border border-line bg-transparent"
-                  title="Cor"
-                />
-                <input
-                  value={s.name}
-                  onChange={(e) => update(i, { name: e.target.value })}
-                  className="min-w-0 flex-1 rounded-md border border-line bg-canvas px-2.5 py-1.5 text-sm text-ink focus:border-line-strong focus:outline-none"
-                  placeholder="Nome da etapa"
-                />
-                <select
-                  value={s.trigger_state ?? ""}
-                  onChange={(e) => update(i, { trigger_state: (e.target.value || null) as LeadState | null })}
-                  className="w-40 shrink-0 rounded-md border border-line bg-canvas px-2 py-1.5 text-xs text-ink-soft focus:border-line-strong focus:outline-none"
-                  title="Fase da IA que alimenta esta coluna"
-                >
-                  <option value="">— Manual —</option>
-                  {PIPELINE_PHASES.map((p) => (
-                    <option key={p.state} value={p.state} disabled={usedBy(i, p.state)}>
-                      {p.label}
-                      {usedBy(i, p.state) ? " (em uso)" : ""}
-                    </option>
-                  ))}
-                </select>
-                <div className="flex shrink-0 items-center">
-                  <button onClick={() => move(i, -1)} className="rounded p-1 text-ink-muted hover:text-ink" title="Subir">
-                    <ArrowUp size={14} />
-                  </button>
-                  <button onClick={() => move(i, 1)} className="rounded p-1 text-ink-muted hover:text-ink" title="Descer">
-                    <ArrowDown size={14} />
-                  </button>
-                  <button
-                    onClick={() => remove(i)}
-                    className="rounded p-1 text-ink-muted hover:text-danger"
-                    title="Remover"
-                  >
-                    <Trash2 size={14} />
-                  </button>
+            {drafts.map((s, i) => {
+              const oc = outcomeOf(s);
+              const isOpen = expanded === i;
+              return (
+                <div key={i} className="rounded-lg border border-line bg-canvas-deep">
+                  <div className="flex items-center gap-2 p-2.5">
+                    <GripVertical size={15} className="shrink-0 text-ink-faint" />
+                    <input
+                      type="color"
+                      value={s.color}
+                      onChange={(e) => update(i, { color: e.target.value })}
+                      className="h-7 w-7 shrink-0 cursor-pointer rounded border border-line bg-transparent"
+                      title="Cor"
+                    />
+                    <input
+                      value={s.name}
+                      onChange={(e) => update(i, { name: e.target.value })}
+                      className="min-w-0 flex-1 rounded-md border border-line bg-canvas px-2.5 py-1.5 text-sm text-ink focus:border-line-strong focus:outline-none"
+                      placeholder="Nome da etapa"
+                    />
+                    <select
+                      value={s.trigger_state ?? ""}
+                      onChange={(e) => update(i, { trigger_state: (e.target.value || null) as LeadState | null })}
+                      disabled={oc !== "normal"}
+                      className="w-36 shrink-0 rounded-md border border-line bg-canvas px-2 py-1.5 text-xs text-ink-soft focus:border-line-strong focus:outline-none disabled:opacity-50"
+                      title="Fase da IA que alimenta esta coluna"
+                    >
+                      <option value="">— Manual —</option>
+                      {PIPELINE_PHASES.map((p) => (
+                        <option key={p.state} value={p.state} disabled={usedBy(i, p.state)}>
+                          {p.label}
+                          {usedBy(i, p.state) ? " (em uso)" : ""}
+                        </option>
+                      ))}
+                    </select>
+                    <button
+                      onClick={() => setExpanded(isOpen ? null : i)}
+                      className="shrink-0 rounded p-1 text-ink-muted hover:text-ink"
+                      title="Avançado"
+                    >
+                      {isOpen ? <ChevronDown size={15} /> : <ChevronRight size={15} />}
+                    </button>
+                    <div className="flex shrink-0 items-center">
+                      <button onClick={() => move(i, -1)} className="rounded p-1 text-ink-muted hover:text-ink" title="Subir">
+                        <ArrowUp size={14} />
+                      </button>
+                      <button onClick={() => move(i, 1)} className="rounded p-1 text-ink-muted hover:text-ink" title="Descer">
+                        <ArrowDown size={14} />
+                      </button>
+                      <button
+                        onClick={() => remove(i)}
+                        className="rounded p-1 text-ink-muted hover:text-danger"
+                        title="Remover"
+                      >
+                        <Trash2 size={14} />
+                      </button>
+                    </div>
+                  </div>
+
+                  {isOpen && (
+                    <div className="space-y-3 border-t border-line/60 px-3 pb-3 pt-3">
+                      <div className="grid grid-cols-2 gap-3">
+                        <label className="block">
+                          <span className="mb-1 block text-[11px] font-medium text-ink-soft">Tipo de coluna</span>
+                          <select
+                            value={oc}
+                            onChange={(e) => setOutcome(i, e.target.value as Outcome)}
+                            className="w-full rounded-md border border-line bg-canvas px-2 py-1.5 text-xs text-ink focus:border-line-strong focus:outline-none"
+                          >
+                            <option value="normal">Normal (funil)</option>
+                            <option value="won">Ganho ✓</option>
+                            <option value="lost">Perdido ✕</option>
+                          </select>
+                        </label>
+                        <label className="block">
+                          <span className="mb-1 block text-[11px] font-medium text-ink-soft">
+                            SLA — esfria após (horas)
+                          </span>
+                          <input
+                            type="number"
+                            min={1}
+                            value={s.sla_hours ?? ""}
+                            onChange={(e) =>
+                              update(i, { sla_hours: e.target.value ? Number(e.target.value) : null })
+                            }
+                            disabled={oc !== "normal"}
+                            placeholder="sem SLA"
+                            className="w-full rounded-md border border-line bg-canvas px-2 py-1.5 text-xs text-ink focus:border-line-strong focus:outline-none disabled:opacity-50"
+                          />
+                        </label>
+                      </div>
+                      <label className="block">
+                        <span className="mb-1 block text-[11px] font-medium text-ink-soft">
+                          Objetivo da IA nesta etapa (opcional)
+                        </span>
+                        <textarea
+                          value={s.ai_goal}
+                          onChange={(e) => update(i, { ai_goal: e.target.value })}
+                          rows={2}
+                          placeholder="ex: descobrir a renda e a região de interesse antes de oferecer horário"
+                          className="w-full resize-none rounded-md border border-line bg-canvas px-2.5 py-1.5 text-xs text-ink focus:border-line-strong focus:outline-none"
+                        />
+                      </label>
+                    </div>
+                  )}
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
 
           <button

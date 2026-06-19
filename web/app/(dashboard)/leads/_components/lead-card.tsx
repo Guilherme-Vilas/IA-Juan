@@ -3,7 +3,7 @@
 import { Badge } from "@/components/ui/badge";
 import { REASON_LABELS, type Lead } from "@/lib/types";
 import { formatCurrency, formatRelative } from "@/lib/utils";
-import { Pause, Phone, Video, MessageSquare, MapPin } from "lucide-react";
+import { Pause, MessageSquare, MapPin, Clock, Trophy, XCircle } from "lucide-react";
 
 const SCORE_BADGES: Record<Lead["score_label"], string> = {
   frio: "bg-canvas-surface-2 text-ink",
@@ -12,7 +12,17 @@ const SCORE_BADGES: Record<Lead["score_label"], string> = {
   pronto: "bg-success/15 text-success",
 };
 
-export function LeadCard({ lead, onClick }: { lead: Lead; onClick: () => void }) {
+export function LeadCard({
+  lead,
+  onClick,
+  ageLabel,
+  stale,
+}: {
+  lead: Lead;
+  onClick: () => void;
+  ageLabel?: string;
+  stale?: boolean;
+}) {
   const name = lead.nome ?? lead.slots.nome ?? lead.wa_id;
   const initials = (name || "?")
     .split(/\s+/)
@@ -59,7 +69,17 @@ export function LeadCard({ lead, onClick }: { lead: Lead; onClick: () => void })
             <MapPin size={10} /> exterior
           </Badge>
         )}
-        {lead.status === "closed" && lead.closed_reason && (
+        {lead.outcome === "won" && (
+          <Badge className="bg-success/15 text-success">
+            <Trophy size={10} /> Ganho
+          </Badge>
+        )}
+        {lead.outcome === "lost" && (
+          <Badge className="bg-danger/15 text-danger">
+            <XCircle size={10} /> Perdido
+          </Badge>
+        )}
+        {!lead.outcome && lead.status === "closed" && lead.closed_reason && (
           <Badge className="bg-red-50 text-red-700">{REASON_LABELS[lead.closed_reason]}</Badge>
         )}
       </div>
@@ -69,8 +89,14 @@ export function LeadCard({ lead, onClick }: { lead: Lead; onClick: () => void })
           <MessageSquare size={11} />
           {formatRelative(lead.last_user_at ?? lead.last_assistant_at ?? lead.updated_at)}
         </span>
-        {lead.slots.fecha_se_proposta_boa && (
-          <span className="text-emerald-600">★ qualificado</span>
+        {ageLabel && (
+          <span
+            className={`flex items-center gap-1 ${stale ? "font-medium text-danger" : ""}`}
+            title="Tempo nesta etapa"
+          >
+            <Clock size={11} />
+            {ageLabel}
+          </span>
         )}
       </div>
     </button>
