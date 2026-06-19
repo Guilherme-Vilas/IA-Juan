@@ -118,6 +118,34 @@ export type LeadTask = {
   created_at: string;
 };
 
+// ===== Lote 4 — catalogo de imoveis =====
+export type Property = {
+  id: number;
+  tenant_id: number;
+  ref: string;
+  title: string;
+  description: string;
+  transaction: "venda" | "locacao";
+  type: string;
+  status: "disponivel" | "reservado" | "vendido" | "inativo";
+  price_cents: number | null;
+  condo_cents: number | null;
+  iptu_cents: number | null;
+  bedrooms: number | null;
+  bathrooms: number | null;
+  suites: number | null;
+  parking: number | null;
+  area_m2: number | null;
+  neighborhood: string;
+  city: string;
+  state: string;
+  address: string;
+  features: string[];
+  photos: string[];
+  created_at: string;
+  updated_at: string;
+};
+
 export type LeadNote = {
   id: number;
   body: string;

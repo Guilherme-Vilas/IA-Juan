@@ -230,6 +230,24 @@ export function crmApi(slug: string) {
   };
 }
 
+export function propertiesApi(slug: string) {
+  return {
+    list: () => adminCall(`/admin/tenants/${slug}/properties`, { method: "GET" }),
+    create: (body: Record<string, unknown>) =>
+      adminCall(`/admin/tenants/${slug}/properties`, { method: "POST", body: JSON.stringify(body) }),
+    update: (id: number, body: Record<string, unknown>) =>
+      adminCall(`/admin/tenants/${slug}/properties/${id}`, { method: "PATCH", body: JSON.stringify(body) }),
+    remove: (id: number) =>
+      adminCall(`/admin/tenants/${slug}/properties/${id}`, { method: "DELETE" }),
+    importCsv: (csv: string) =>
+      adminCall(`/admin/tenants/${slug}/properties/import`, {
+        method: "POST",
+        body: JSON.stringify({ csv }),
+      }),
+    feedUrl: () => adminCall(`/admin/tenants/${slug}/properties/feed-url`, { method: "GET" }),
+  };
+}
+
 export function knowledgeApi(slug: string) {
   return {
     list: () => adminCall(`/admin/tenants/${slug}/knowledge`, { method: "GET" }),

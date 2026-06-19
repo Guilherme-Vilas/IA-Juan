@@ -11,6 +11,7 @@ import {
   Inbox,
   Send,
   Server,
+  Building2,
   BookOpen,
   Sparkles,
   Library,
@@ -33,6 +34,7 @@ const groups: NavGroup[] = [
     items: [
       { href: "/inbox", label: "Inbox", icon: Inbox },
       { href: "/agenda", label: "Agenda", icon: Calendar },
+      { href: "/properties", label: "Imóveis", icon: Building2 },
       { href: "/prospect", label: "Prospecção", icon: Send },
     ],
   },

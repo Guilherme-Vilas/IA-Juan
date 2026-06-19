@@ -28,7 +28,7 @@ export async function rotateIngestToken(tenantId: number): Promise<string> {
   return token;
 }
 
-async function getTenantByIngestToken(token: string): Promise<TenantRow | null> {
+export async function getTenantByIngestToken(token: string): Promise<TenantRow | null> {
   const { rows } = await pool.query<{ id: number }>(
     `SELECT id FROM tenants WHERE ingest_token = $1`,
     [token],

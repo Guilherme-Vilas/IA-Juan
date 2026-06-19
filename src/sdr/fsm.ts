@@ -1,5 +1,6 @@
 import { chat, type ChatMessage } from "../core/llm.js";
-import { SDR_TOOLS } from "./tools.js";
+import { SDR_TOOLS, PROPERTY_TOOL } from "./tools.js";
+import { countProperties, searchProperties, summarizeForAgent } from "../core/properties.js";
 import { sanitizeReply, type ExtractedCall } from "./sanitize.js";
 import { loadPrompts, contextFor, type TenantPrompts } from "./prompts/loader.js";
 import { lookupPricing, type PricingTipo } from "./pricing.js";
@@ -358,6 +359,10 @@ export async function runTurn(
 
   const stageGoal = await getStageGoalForLead(tenant.id, lead.id).catch(() => "");
 
+  // Catalogo de imoveis: so habilita a tool de busca pra tenants que tem catalogo.
+  const hasCatalog = (await countProperties(tenant.id).catch(() => 0)) > 0;
+  const toolsForTurn = hasCatalog ? [...SDR_TOOLS, PROPERTY_TOOL] : SDR_TOOLS;
+
   const history = await loadHistory(tenant.slug, waId);
   const systemPrompt = buildSystemPrompt(prompts, lead, agentSettings, reopenedFrom, knowledgeContext, stageGoal);
 
@@ -377,7 +382,7 @@ export async function runTurn(
       choice = await chat({
         model: "main",
         messages,
-        tools: useTools ? SDR_TOOLS : undefined,
+        tools: useTools ? toolsForTurn : undefined,
         temperature: 0.4,
         maxTokens: 350,
       });
@@ -498,6 +503,29 @@ export async function runTurn(
           } else {
             toolResult = `pricing_invalido (${result.reason}) — peça o valor da carta novamente em R$.`;
           }
+        } else if (name === "buscar_imoveis") {
+          const transaction = args.transaction === "locacao" ? "locacao" : args.transaction === "venda" ? "venda" : undefined;
+          const maxPreco = Number(args.max_preco);
+          const matches = await searchProperties(tenant.id, {
+            transaction,
+            type: typeof args.type === "string" ? args.type : undefined,
+            max_price_cents: maxPreco > 0 ? Math.round(maxPreco * 100) : undefined,
+            min_bedrooms: Number(args.min_quartos) > 0 ? Number(args.min_quartos) : undefined,
+            parking: Number(args.vagas) > 0 ? Number(args.vagas) : undefined,
+            city: typeof args.cidade === "string" ? args.cidade : undefined,
+            neighborhood: typeof args.bairro === "string" ? args.bairro : undefined,
+            limit: 4,
+          });
+          toolResult = `imoveis:${summarizeForAgent(matches)}`;
+          messages.push({ role: "tool", tool_call_id: tc.id, name, content: toolResult } as ChatMessage);
+          messages.push({
+            role: "system",
+            content:
+              matches.length === 0
+                ? "Não achei imóvel no catálogo com esse perfil. Diga isso com naturalidade e pergunte se ele topa flexibilizar bairro/orçamento, ou ofereça falar com um corretor."
+                : "Apresente no MÁXIMO 3 destes imóveis de forma natural e curta (1 linha cada: tipo, bairro, quartos e preço). NÃO cole JSON. Ao final, ofereça agendar uma visita.",
+          });
+          continue;
         } else if (name === "request_handoff") {
           closedByHandoff = true;
           closedReason = "handoff";

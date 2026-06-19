@@ -216,3 +216,30 @@ export const SDR_TOOLS: ToolDef[] = [
     },
   },
 ];
+
+// Tool de catalogo de imoveis — incluida SO para tenants com catalogo (imobiliaria).
+// Ver fsm.ts (countProperties decide se entra na lista de tools do turno).
+export const PROPERTY_TOOL: ToolDef = {
+  type: "function",
+  function: {
+    name: "buscar_imoveis",
+    description:
+      "Busca imóveis no catálogo da imobiliária que batem com o perfil do lead. Use quando o lead indicar finalidade/região/orçamento e você quiser sugerir opções REAIS. Apresente 2-3 de forma natural (não despeje a lista crua) e ofereça agendar uma visita.",
+    parameters: {
+      type: "object",
+      properties: {
+        transaction: { type: "string", enum: ["venda", "locacao"], description: "venda ou locação" },
+        type: {
+          type: "string",
+          description: "tipo do imóvel (apartamento, casa, terreno, comercial...)",
+        },
+        max_preco: { type: "number", description: "orçamento máximo em R$ (número, sem pontuação)" },
+        min_quartos: { type: "integer", description: "mínimo de quartos/dormitórios" },
+        vagas: { type: "integer", description: "mínimo de vagas de garagem" },
+        cidade: { type: "string", description: "cidade desejada" },
+        bairro: { type: "string", description: "bairro/região desejada" },
+      },
+      additionalProperties: false,
+    },
+  },
+};
