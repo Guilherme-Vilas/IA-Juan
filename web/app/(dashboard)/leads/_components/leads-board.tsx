@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import type { Lead, PipelineStage, TenantMember } from "@/lib/types";
+import type { Lead, PipelineStage, TenantMember, CustomFieldDef } from "@/lib/types";
 import { LeadCard } from "./lead-card";
 import { LeadDrawer } from "./lead-drawer";
 import { StageEditor } from "./stage-editor";
@@ -35,11 +35,13 @@ export function LeadsBoard({
   initialStages,
   members,
   distribution,
+  fieldDefs,
 }: {
   initial: Lead[];
   initialStages: PipelineStage[];
   members: TenantMember[];
   distribution: "manual" | "round_robin";
+  fieldDefs: CustomFieldDef[];
 }) {
   const [leads, setLeads] = useState<Lead[]>(initial);
   const [stages, setStages] = useState<PipelineStage[]>(initialStages);
@@ -221,7 +223,13 @@ export function LeadsBoard({
         })}
       </div>
 
-      <LeadDrawer waId={selected} onClose={() => setSelected(null)} onChange={refresh} members={members} />
+      <LeadDrawer
+        waId={selected}
+        onClose={() => setSelected(null)}
+        onChange={refresh}
+        members={members}
+        fieldDefs={fieldDefs}
+      />
 
       {editing && (
         <StageEditor

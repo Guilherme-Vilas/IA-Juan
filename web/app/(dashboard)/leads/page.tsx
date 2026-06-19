@@ -1,5 +1,5 @@
 import { pool } from "@/lib/db";
-import type { Lead, PipelineStage, TenantMember } from "@/lib/types";
+import type { Lead, PipelineStage, TenantMember, CustomFieldDef } from "@/lib/types";
 import { Header } from "@/components/layout/header";
 import { LeadsBoard } from "./_components/leads-board";
 import { getCurrentTenant } from "@/lib/tenant";
@@ -23,6 +23,15 @@ async function getDistribution(tenantId: number): Promise<"manual" | "round_robi
     [tenantId],
   );
   return rows[0]?.lead_distribution ?? "manual";
+}
+
+async function getFieldDefs(tenantId: number): Promise<CustomFieldDef[]> {
+  const { rows } = await pool.query<CustomFieldDef>(
+    `SELECT id, key, label, type, options, position FROM custom_field_defs
+      WHERE tenant_id = $1 ORDER BY position ASC, id ASC`,
+    [tenantId],
+  );
+  return rows;
 }
 
 async function getLeads(tenantId: number): Promise<Lead[]> {
@@ -50,11 +59,12 @@ async function getStages(tenantId: number): Promise<PipelineStage[]> {
 
 export default async function LeadsPage() {
   const tenant = await getCurrentTenant();
-  const [leads, stages, members, distribution] = await Promise.all([
+  const [leads, stages, members, distribution, fieldDefs] = await Promise.all([
     getLeads(tenant.id),
     getStages(tenant.id),
     getMembers(tenant.id),
     getDistribution(tenant.id),
+    getFieldDefs(tenant.id),
   ]);
   const openCount = leads.filter((l) => l.status === "open").length;
   return (
@@ -64,7 +74,13 @@ export default async function LeadsPage() {
         subtitle={`${tenant.name} · ${openCount} abertos · ${leads.length - openCount} fechados (últimos 30d)`}
       />
       <div className="flex-1 overflow-hidden bg-canvas">
-        <LeadsBoard initial={leads} initialStages={stages} members={members} distribution={distribution} />
+        <LeadsBoard
+          initial={leads}
+          initialStages={stages}
+          members={members}
+          distribution={distribution}
+          fieldDefs={fieldDefs}
+        />
       </div>
     </>
   );

@@ -7,6 +7,8 @@ import {
   addNote,
   listNotes,
 } from "../core/crm.js";
+import { listFieldDefs, replaceFieldDefs, setLeadCustomFields, type FieldDefInput } from "../core/custom-fields.js";
+import { createTask, listTasks, setTaskDone, deleteTask } from "../core/tasks.js";
 
 export async function registerCrmRoutes(app: FastifyInstance) {
   app.register(async (scope) => {
@@ -64,6 +66,59 @@ export async function registerCrmRoutes(app: FastifyInstance) {
       }
       await setLeadDistribution(req.tenantId!, body.mode);
       return { ok: true, mode: body.mode };
+    });
+
+    // ===== Campos customizados =====
+    scope.get("/admin/tenants/:slug/custom-fields", async (req) => {
+      return { fields: await listFieldDefs(req.tenantId!) };
+    });
+    scope.put("/admin/tenants/:slug/custom-fields", async (req, reply) => {
+      const body = req.body as { fields?: FieldDefInput[] };
+      if (!Array.isArray(body?.fields)) return reply.code(400).send({ error: "fields[] obrigatório" });
+      const res = await replaceFieldDefs(req.tenantId!, body.fields);
+      if (!res.ok) return reply.code(400).send({ error: res.error });
+      return { ok: true, fields: await listFieldDefs(req.tenantId!) };
+    });
+    scope.patch("/admin/tenants/:slug/leads/:waId/custom", async (req, reply) => {
+      const { waId } = req.params as { slug: string; waId: string };
+      const body = req.body as { values?: Record<string, unknown> };
+      if (!body?.values || typeof body.values !== "object") {
+        return reply.code(400).send({ error: "values{} obrigatório" });
+      }
+      const ok = await setLeadCustomFields(req.tenantId!, waId, body.values);
+      if (!ok) return reply.code(404).send({ error: "lead not found" });
+      return { ok: true };
+    });
+
+    // ===== Tarefas / lembretes =====
+    scope.get("/admin/tenants/:slug/leads/:waId/tasks", async (req) => {
+      const { waId } = req.params as { slug: string; waId: string };
+      return { tasks: await listTasks(req.tenantId!, waId) };
+    });
+    scope.post("/admin/tenants/:slug/leads/:waId/tasks", async (req, reply) => {
+      const { waId } = req.params as { slug: string; waId: string };
+      const body = req.body as { title?: string; due_at?: string | null; assigned_user_id?: number | null };
+      const res = await createTask(req.tenantId!, waId, {
+        title: body?.title ?? "",
+        due_at: body?.due_at ?? null,
+        assigned_user_id: body?.assigned_user_id ?? null,
+        created_by: userId(req),
+      });
+      if (!res.ok) return reply.code(400).send({ error: res.error });
+      return { ok: true };
+    });
+    scope.post("/admin/tenants/:slug/tasks/:id/done", async (req, reply) => {
+      const { id } = req.params as { slug: string; id: string };
+      const body = req.body as { done?: boolean };
+      const ok = await setTaskDone(req.tenantId!, Number(id), body?.done ?? true);
+      if (!ok) return reply.code(404).send({ error: "task not found" });
+      return { ok: true };
+    });
+    scope.delete("/admin/tenants/:slug/tasks/:id", async (req, reply) => {
+      const { id } = req.params as { slug: string; id: string };
+      const ok = await deleteTask(req.tenantId!, Number(id));
+      if (!ok) return reply.code(404).send({ error: "task not found" });
+      return { ok: true };
     });
   });
 }

@@ -8,9 +8,9 @@ import { Conversation } from "./conversation";
 import { SlotsPanel } from "./slots-panel";
 import { ActionsBar } from "./actions-bar";
 import { StageTimeline } from "./stage-timeline";
-import { LeadCrmBar, NotesPanel } from "./crm-panels";
+import { LeadCrmBar, NotesPanel, TasksPanel, CustomFieldsValues } from "./crm-panels";
 import { Badge } from "@/components/ui/badge";
-import { STATE_COLORS, STATE_LABELS, type TenantMember } from "@/lib/types";
+import { STATE_COLORS, STATE_LABELS, type TenantMember, type CustomFieldDef } from "@/lib/types";
 import { Hand } from "lucide-react";
 
 export function LeadDrawer({
@@ -18,11 +18,13 @@ export function LeadDrawer({
   onClose,
   onChange,
   members = [],
+  fieldDefs = [],
 }: {
   waId: string | null;
   onClose: () => void;
   onChange: () => void;
   members?: TenantMember[];
+  fieldDefs?: CustomFieldDef[];
 }) {
   const [lead, setLead] = useState<Lead | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
@@ -109,6 +111,7 @@ export function LeadDrawer({
               <TabsList>
                 <TabsTrigger value="conversa">Conversa</TabsTrigger>
                 <TabsTrigger value="slots">Qualificação</TabsTrigger>
+                <TabsTrigger value="tarefas">Tarefas</TabsTrigger>
                 <TabsTrigger value="notas">Notas</TabsTrigger>
                 <TabsTrigger value="historico">Histórico</TabsTrigger>
                 <TabsTrigger value="info">Info</TabsTrigger>
@@ -124,6 +127,9 @@ export function LeadDrawer({
               <TabsContent value="slots" className="flex-1 overflow-y-auto">
                 <SlotsPanel lead={lead} />
               </TabsContent>
+              <TabsContent value="tarefas" className="flex-1 overflow-hidden">
+                <TasksPanel waId={lead.wa_id} />
+              </TabsContent>
               <TabsContent value="notas" className="flex-1 overflow-hidden">
                 <NotesPanel waId={lead.wa_id} />
               </TabsContent>
@@ -131,6 +137,7 @@ export function LeadDrawer({
                 <StageTimeline waId={lead.wa_id} />
               </TabsContent>
               <TabsContent value="info" className="flex-1 overflow-y-auto text-sm">
+                <CustomFieldsValues lead={lead} defs={fieldDefs} onChange={refresh} />
                 <Info lead={lead} />
               </TabsContent>
             </Tabs>

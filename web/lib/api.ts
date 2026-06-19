@@ -194,6 +194,31 @@ export function crmApi(slug: string) {
         method: "PATCH",
         body: JSON.stringify({ mode }),
       }),
+    // Lote 2 — campos customizados
+    customFields: () => adminCall(`/admin/tenants/${slug}/custom-fields`, { method: "GET" }),
+    saveCustomFields: (fields: unknown[]) =>
+      adminCall(`/admin/tenants/${slug}/custom-fields`, {
+        method: "PUT",
+        body: JSON.stringify({ fields }),
+      }),
+    setCustom: (waId: string, values: Record<string, unknown>) =>
+      adminCall(`/admin/tenants/${slug}/leads/${waId}/custom`, {
+        method: "PATCH",
+        body: JSON.stringify({ values }),
+      }),
+    // Lote 2 — tarefas
+    tasks: (waId: string) => adminCall(`/admin/tenants/${slug}/leads/${waId}/tasks`, { method: "GET" }),
+    addTask: (waId: string, body: Record<string, unknown>) =>
+      adminCall(`/admin/tenants/${slug}/leads/${waId}/tasks`, {
+        method: "POST",
+        body: JSON.stringify(body),
+      }),
+    setTaskDone: (id: number, done: boolean) =>
+      adminCall(`/admin/tenants/${slug}/tasks/${id}/done`, {
+        method: "POST",
+        body: JSON.stringify({ done }),
+      }),
+    deleteTask: (id: number) => adminCall(`/admin/tenants/${slug}/tasks/${id}`, { method: "DELETE" }),
   };
 }
 

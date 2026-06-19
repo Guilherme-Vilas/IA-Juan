@@ -85,6 +85,8 @@ export type Lead = {
   // CRM Lote 1: valor do negocio + vendedor responsavel
   value_cents: number | null;
   assigned_user_id: number | null;
+  // CRM Lote 2: campos customizados (keyed por def.key)
+  custom_fields: Record<string, unknown>;
 };
 
 export type TenantMember = {
@@ -92,6 +94,26 @@ export type TenantMember = {
   name: string;
   email: string;
   role: "owner" | "admin" | "sdr" | "viewer";
+};
+
+export type CustomFieldType = "text" | "number" | "select" | "date" | "boolean";
+export type CustomFieldDef = {
+  id: number;
+  key: string;
+  label: string;
+  type: CustomFieldType;
+  options: string[];
+  position: number;
+};
+
+export type LeadTask = {
+  id: number;
+  title: string;
+  assigned_user_id: number | null;
+  assignee: string | null;
+  due_at: string | null;
+  done_at: string | null;
+  created_at: string;
 };
 
 export type LeadNote = {

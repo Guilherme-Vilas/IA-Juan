@@ -1,9 +1,9 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import type { Lead, LeadNote, TenantMember } from "@/lib/types";
+import type { Lead, LeadNote, LeadTask, CustomFieldDef, TenantMember } from "@/lib/types";
 import { Button } from "@/components/ui/button";
-import { User, DollarSign } from "lucide-react";
+import { User, DollarSign, Check, Trash2, Plus } from "lucide-react";
 
 // Barra de CRM no drawer: responsavel + valor do negocio.
 export function LeadCrmBar({
@@ -156,6 +156,195 @@ export function NotesPanel({ waId }: { waId: string }) {
           </div>
         )}
       </div>
+    </div>
+  );
+}
+
+// Aba de tarefas / lembretes do lead.
+export function TasksPanel({ waId }: { waId: string }) {
+  const [tasks, setTasks] = useState<LeadTask[] | null>(null);
+  const [title, setTitle] = useState("");
+  const [due, setDue] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  async function load() {
+    try {
+      const r = await fetch(`/api/leads/${waId}/tasks`, { cache: "no-store" });
+      if (r.ok) setTasks((await r.json()).tasks ?? []);
+    } catch {
+      setTasks([]);
+    }
+  }
+  useEffect(() => {
+    load();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [waId]);
+
+  async function add() {
+    if (!title.trim()) return;
+    setBusy(true);
+    try {
+      await fetch(`/api/leads/${waId}/tasks`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ title, due_at: due ? new Date(due).toISOString() : null }),
+      });
+      setTitle("");
+      setDue("");
+      await load();
+    } finally {
+      setBusy(false);
+    }
+  }
+  async function toggle(t: LeadTask) {
+    await fetch(`/api/tasks/${t.id}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ done: !t.done_at }),
+    });
+    load();
+  }
+  async function remove(t: LeadTask) {
+    await fetch(`/api/tasks/${t.id}`, { method: "DELETE" });
+    load();
+  }
+
+  const overdue = (t: LeadTask) => !t.done_at && t.due_at && new Date(t.due_at).getTime() < Date.now();
+
+  return (
+    <div className="flex h-full flex-col">
+      <div className="space-y-2 border-b border-line pb-3">
+        <input
+          value={title}
+          onChange={(e) => setTitle(e.target.value)}
+          placeholder="Ex: Ligar, enviar proposta, agendar visita…"
+          className="w-full rounded-md border border-line bg-canvas-deep px-3 py-2 text-sm text-ink focus:border-line-strong focus:outline-none"
+        />
+        <div className="flex gap-2">
+          <input
+            type="datetime-local"
+            value={due}
+            onChange={(e) => setDue(e.target.value)}
+            className="flex-1 rounded-md border border-line bg-canvas-deep px-2 py-1.5 text-xs text-ink focus:border-line-strong focus:outline-none"
+          />
+          <Button size="sm" onClick={add} disabled={busy || !title.trim()}>
+            <Plus size={14} /> Tarefa
+          </Button>
+        </div>
+      </div>
+      <div className="flex-1 overflow-y-auto py-3">
+        {tasks === null ? (
+          <div className="text-center text-xs text-ink-muted">Carregando…</div>
+        ) : tasks.length === 0 ? (
+          <div className="text-center text-xs text-ink-muted">Nenhuma tarefa.</div>
+        ) : (
+          <div className="space-y-1.5">
+            {tasks.map((t) => (
+              <div
+                key={t.id}
+                className="flex items-center gap-2 rounded-md border border-line bg-canvas-surface px-2.5 py-2 text-sm"
+              >
+                <button
+                  onClick={() => toggle(t)}
+                  className={`grid h-4 w-4 shrink-0 place-items-center rounded border ${
+                    t.done_at ? "border-success bg-success/20 text-success" : "border-line text-transparent"
+                  }`}
+                  title={t.done_at ? "Reabrir" : "Concluir"}
+                >
+                  <Check size={11} />
+                </button>
+                <div className="min-w-0 flex-1">
+                  <div className={`truncate ${t.done_at ? "text-ink-faint line-through" : "text-ink"}`}>
+                    {t.title}
+                  </div>
+                  {t.due_at && (
+                    <div className={`text-[11px] ${overdue(t) ? "text-danger" : "text-ink-faint"}`}>
+                      {new Date(t.due_at).toLocaleString("pt-BR")}
+                      {t.assignee ? ` · ${t.assignee}` : ""}
+                    </div>
+                  )}
+                </div>
+                <button onClick={() => remove(t)} className="text-ink-muted hover:text-danger" title="Remover">
+                  <Trash2 size={13} />
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// Valores de campos customizados (renderizados a partir das definicoes do tenant).
+export function CustomFieldsValues({
+  lead,
+  defs,
+  onChange,
+}: {
+  lead: Lead;
+  defs: CustomFieldDef[];
+  onChange: () => void;
+}) {
+  const [vals, setVals] = useState<Record<string, unknown>>(lead.custom_fields ?? {});
+
+  useEffect(() => {
+    setVals(lead.custom_fields ?? {});
+  }, [lead.custom_fields]);
+
+  if (defs.length === 0) return null;
+
+  async function save(key: string, value: unknown) {
+    setVals((v) => ({ ...v, [key]: value }));
+    await fetch(`/api/leads/${lead.wa_id}/custom`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ values: { [key]: value } }),
+    });
+    onChange();
+  }
+
+  return (
+    <div className="space-y-3 border-b border-line pb-4 pt-1">
+      <div className="text-xs font-medium uppercase tracking-wide text-ink-faint">Campos</div>
+      {defs.map((d) => {
+        const v = vals[d.key];
+        return (
+          <label key={d.key} className="block">
+            <span className="mb-1 block text-xs text-ink-soft">{d.label}</span>
+            {d.type === "select" ? (
+              <select
+                value={(v as string) ?? ""}
+                onChange={(e) => save(d.key, e.target.value || null)}
+                className="w-full rounded-md border border-line bg-canvas-deep px-2 py-1.5 text-sm text-ink focus:border-line-strong focus:outline-none"
+              >
+                <option value="">—</option>
+                {d.options.map((o) => (
+                  <option key={o} value={o}>
+                    {o}
+                  </option>
+                ))}
+              </select>
+            ) : d.type === "boolean" ? (
+              <input
+                type="checkbox"
+                checked={!!v}
+                onChange={(e) => save(d.key, e.target.checked)}
+                className="h-4 w-4 rounded border-line bg-canvas-deep accent-accent-bronze"
+              />
+            ) : (
+              <input
+                type={d.type === "number" ? "number" : d.type === "date" ? "date" : "text"}
+                defaultValue={(v as string | number) ?? ""}
+                onBlur={(e) =>
+                  save(d.key, e.target.value === "" ? null : d.type === "number" ? Number(e.target.value) : e.target.value)
+                }
+                className="w-full rounded-md border border-line bg-canvas-deep px-2 py-1.5 text-sm text-ink focus:border-line-strong focus:outline-none"
+              />
+            )}
+          </label>
+        );
+      })}
     </div>
   );
 }

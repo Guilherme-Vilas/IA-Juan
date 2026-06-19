@@ -1,0 +1,22 @@
+import { NextResponse } from "next/server";
+import { crmApi } from "@/lib/api";
+import { getCurrentTenant } from "@/lib/tenant";
+
+export async function GET() {
+  const tenant = await getCurrentTenant();
+  try {
+    return NextResponse.json(await crmApi(tenant.slug).customFields());
+  } catch (err) {
+    return NextResponse.json({ error: String(err) }, { status: 500 });
+  }
+}
+
+export async function PUT(req: Request) {
+  const tenant = await getCurrentTenant();
+  const body = (await req.json()) as { fields?: unknown[] };
+  try {
+    return NextResponse.json(await crmApi(tenant.slug).saveCustomFields(body.fields ?? []));
+  } catch (err) {
+    return NextResponse.json({ error: String(err) }, { status: 500 });
+  }
+}

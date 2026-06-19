@@ -5,6 +5,7 @@ import { config } from "../config.js";
 import { composeMessage } from "../prospect/compose.js";
 import { tickAllCampaigns } from "../prospect/dispatcher.js";
 import { scanSlaBreaches } from "../core/sla.js";
+import { scanTaskReminders } from "../core/tasks.js";
 import {
   getCampaignById,
   getProspect,
@@ -79,8 +80,10 @@ const tickWorker = new Worker<ProspectTickJob>(
   "prospect-tick",
   async () => {
     await tickAllCampaigns().catch((err) => logger.error({ err }, "prospect tick fatal"));
-    // Reaproveita o tick pra cobrar leads que esfriaram (SLA por etapa).
+    // Reaproveita o tick pra cobrar leads que esfriaram (SLA por etapa)
+    // e lembrar tarefas vencidas.
     await scanSlaBreaches().catch((err) => logger.error({ err }, "sla scan fatal"));
+    await scanTaskReminders().catch((err) => logger.error({ err }, "task reminder scan fatal"));
   },
   { ...bullConnection, concurrency: 1 },
 );
