@@ -230,6 +230,23 @@ export function crmApi(slug: string) {
   };
 }
 
+export function automationsApi(slug: string) {
+  return {
+    list: () => adminCall(`/admin/tenants/${slug}/automations`, { method: "GET" }),
+    get: (id: number) => adminCall(`/admin/tenants/${slug}/automations/${id}`, { method: "GET" }),
+    create: (body: Record<string, unknown>) =>
+      adminCall(`/admin/tenants/${slug}/automations`, { method: "POST", body: JSON.stringify(body) }),
+    update: (id: number, body: Record<string, unknown>) =>
+      adminCall(`/admin/tenants/${slug}/automations/${id}`, { method: "PATCH", body: JSON.stringify(body) }),
+    toggle: (id: number, enabled: boolean) =>
+      adminCall(`/admin/tenants/${slug}/automations/${id}/toggle`, {
+        method: "POST",
+        body: JSON.stringify({ enabled }),
+      }),
+    remove: (id: number) => adminCall(`/admin/tenants/${slug}/automations/${id}`, { method: "DELETE" }),
+  };
+}
+
 export function propertiesApi(slug: string) {
   return {
     list: () => adminCall(`/admin/tenants/${slug}/properties`, { method: "GET" }),

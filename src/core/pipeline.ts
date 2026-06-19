@@ -180,6 +180,7 @@ export async function syncLeadStage(
     actorUserId: opts.actorUserId ?? null,
     reason: opts.reason ?? "",
   });
+  await fireStageTrigger(tenantId, leadId, target.id);
   return target;
 }
 
@@ -250,7 +251,59 @@ export async function moveLeadManual(
     actorUserId: opts.actorUserId ?? null,
     reason: opts.reason ?? "movido manualmente",
   });
+  await fireStageTrigger(tenantId, lead.id, stage.id);
+  if (outcome) await fireOutcomeTrigger(tenantId, lead.id, outcome);
   return { ok: true };
+}
+
+// ===== Disparo de automacoes (import dinamico evita ciclo com automations.ts) =====
+async function fireStageTrigger(tenantId: number, leadId: number, stageId: number): Promise<void> {
+  try {
+    const m = await import("./automations.js");
+    await m.fireTrigger(tenantId, "stage_entered", leadId, { stage_id: stageId });
+  } catch (err) {
+    logger.warn({ err }, "pipeline: trigger stage_entered falhou");
+  }
+}
+async function fireOutcomeTrigger(tenantId: number, leadId: number, outcome: "won" | "lost"): Promise<void> {
+  try {
+    const m = await import("./automations.js");
+    await m.fireTrigger(tenantId, outcome === "won" ? "lead_won" : "lead_lost", leadId, {});
+  } catch (err) {
+    logger.warn({ err }, "pipeline: trigger outcome falhou");
+  }
+}
+
+// Move o lead pra uma etapa SEM disparar automacoes (usado pelas ACOES de
+// automacao -> evita loop). Loga o evento como 'system'.
+export async function setLeadStageDirect(tenantId: number, leadId: number, stageId: number): Promise<void> {
+  const cur = await pool.query<{ pipeline_stage_id: number | null; state: string }>(
+    `SELECT pipeline_stage_id, state FROM leads WHERE id=$1 AND tenant_id=$2`,
+    [leadId, tenantId],
+  );
+  const lead = cur.rows[0];
+  if (!lead || lead.pipeline_stage_id === stageId) return;
+  const st = await pool.query<{ trigger_state: string | null }>(
+    `SELECT ps.trigger_state FROM pipeline_stages ps JOIN pipelines p ON p.id=ps.pipeline_id
+      WHERE ps.id=$1 AND p.tenant_id=$2`,
+    [stageId, tenantId],
+  );
+  if (!st.rows[0]) return;
+  await pool.query(
+    `UPDATE leads SET pipeline_stage_id=$1, stage_entered_at=now(), sla_alerted_at=NULL,
+            state=COALESCE($2, state), updated_at=now() WHERE id=$3`,
+    [stageId, st.rows[0].trigger_state, leadId],
+  );
+  await logStageEvent({
+    tenantId,
+    leadId,
+    fromStageId: lead.pipeline_stage_id,
+    toStageId: stageId,
+    fromState: lead.state,
+    toState: st.rows[0].trigger_state,
+    actor: "system",
+    reason: "automação",
+  });
 }
 
 // Devolve o lead a automacao: reabilita o sync e reposiciona pela fase atual.

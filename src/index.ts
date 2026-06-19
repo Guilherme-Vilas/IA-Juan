@@ -19,6 +19,7 @@ import { registerKnowledgeRoutes } from "./api/knowledge.js";
 import { registerPipelineRoutes } from "./api/pipeline.js";
 import { registerCrmRoutes } from "./api/crm.js";
 import { registerPropertyRoutes } from "./api/properties.js";
+import { registerAutomationRoutes } from "./api/automations.js";
 
 async function main() {
   const app = Fastify({ logger: false, bodyLimit: 10 * 1024 * 1024 });
@@ -59,6 +60,7 @@ async function main() {
   await registerPipelineRoutes(app);
   await registerCrmRoutes(app);
   await registerPropertyRoutes(app);
+  await registerAutomationRoutes(app);
 
   await app.listen({ host: "0.0.0.0", port: config.PORT });
   logger.info(

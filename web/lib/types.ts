@@ -118,6 +118,32 @@ export type LeadTask = {
   created_at: string;
 };
 
+// ===== Automacoes / cadencias =====
+export type AutomationTrigger = "lead_created" | "stage_entered" | "lead_won" | "lead_lost" | "no_reply";
+export type AutomationActionType =
+  | "send_message"
+  | "create_task"
+  | "add_note"
+  | "assign_round_robin"
+  | "move_stage"
+  | "notify_owner";
+export type AutomationStep = {
+  delay_minutes: number;
+  action_type: AutomationActionType;
+  action_config: Record<string, unknown>;
+};
+export type Automation = {
+  id: number;
+  name: string;
+  enabled: boolean;
+  trigger_type: AutomationTrigger;
+  trigger_config: Record<string, unknown>;
+  conditions: Record<string, unknown>;
+  stop_on_reply: boolean;
+  steps: number; // contagem na listagem
+};
+export type AutomationFull = Omit<Automation, "steps"> & { steps: AutomationStep[] };
+
 // ===== Lote 4 — catalogo de imoveis =====
 export type Property = {
   id: number;

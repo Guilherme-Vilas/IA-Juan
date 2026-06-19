@@ -6,6 +6,7 @@ import { composeMessage } from "../prospect/compose.js";
 import { tickAllCampaigns } from "../prospect/dispatcher.js";
 import { scanSlaBreaches } from "../core/sla.js";
 import { scanTaskReminders } from "../core/tasks.js";
+import { advanceRuns, scanNoReplyAutomations } from "../core/automations.js";
 import {
   getCampaignById,
   getProspect,
@@ -84,6 +85,9 @@ const tickWorker = new Worker<ProspectTickJob>(
     // e lembrar tarefas vencidas.
     await scanSlaBreaches().catch((err) => logger.error({ err }, "sla scan fatal"));
     await scanTaskReminders().catch((err) => logger.error({ err }, "task reminder scan fatal"));
+    // Motor de automacoes: inicia cadencias de no-reply e avanca os passos vencidos.
+    await scanNoReplyAutomations().catch((err) => logger.error({ err }, "automations no_reply scan fatal"));
+    await advanceRuns().catch((err) => logger.error({ err }, "automations advance fatal"));
   },
   { ...bullConnection, concurrency: 1 },
 );

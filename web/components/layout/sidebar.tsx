@@ -14,6 +14,7 @@ import {
   Building2,
   BookOpen,
   Sparkles,
+  Zap,
   Library,
   Users,
   Ticket,
@@ -46,6 +47,7 @@ const groups: NavGroup[] = [
     label: "Inteligência",
     items: [
       { href: "/personalization", label: "Personalização da IA", icon: Sparkles },
+      { href: "/automations", label: "Automações", icon: Zap },
       { href: "/knowledge", label: "Base de conhecimento", icon: Library },
     ],
   },

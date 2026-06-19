@@ -20,6 +20,7 @@ import {
 import { redis, keys } from "../core/redis.js";
 import { syncLeadStage, getStageGoalForLead } from "../core/pipeline.js";
 import { autoAssignNewLead } from "../core/crm.js";
+import { fireTrigger, cancelRunsForLead } from "../core/automations.js";
 import { config } from "../config.js";
 import { logger } from "../core/logger.js";
 import { executeHandoff, pauseAi } from "./handoff.js";
@@ -304,15 +305,25 @@ export async function runTurn(
   const isRetry = !!retryContext;
   const currentAttempt = retryContext?.attempt ?? 0;
 
-  const lead =
-    (await getLead(tenant.id, waId)) ??
-    (await upsertLead(tenant.id, waId, { nome: pushName ?? null }));
+  const existing = await getLead(tenant.id, waId);
+  const isNewLead = !existing;
+  const lead = existing ?? (await upsertLead(tenant.id, waId, { nome: pushName ?? null }));
 
   // CRM: round-robin distribui o lead novo entre os vendedores (no-op se manual
   // ou se ja tem dono). Best-effort — nunca trava o turno.
   await autoAssignNewLead(tenant.id, lead.id, tenant.lead_distribution).catch((err) =>
     logger.warn({ err, tenant: tenant.slug, waId }, "crm: auto-assign falhou (seguindo)"),
   );
+
+  // Automacoes: dispara cadencia de lead novo; e cancela cadencias quando o lead
+  // responde (stop_on_reply) — so em inbound real, nao em retry.
+  if (isNewLead) {
+    await fireTrigger(tenant.id, "lead_created", lead.id).catch((err) =>
+      logger.warn({ err, tenant: tenant.slug, waId }, "automations: lead_created falhou"),
+    );
+  } else if (!isRetry) {
+    await cancelRunsForLead(tenant.id, lead.id, { onlyStopOnReply: true }).catch(() => undefined);
+  }
 
   // ÚNICA condição que silencia a IA: pause manual do owner.
   if (lead.paused) {

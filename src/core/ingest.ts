@@ -101,6 +101,12 @@ export async function ingestLead(token: string, payload: IngestPayload): Promise
     );
   }
 
+  // Automacoes: dispara cadencia de lead novo (best-effort).
+  if (created) {
+    const { fireTrigger } = await import("./automations.js");
+    await fireTrigger(tenant.id, "lead_created", lead.id).catch(() => undefined);
+  }
+
   logger.info({ tenant: tenant.slug, waId, created, source: payload.source }, "ingest: lead capturado");
   return { ok: true, wa_id: waId, created };
 }
