@@ -18,6 +18,7 @@ import {
 } from "../core/db.js";
 import { redis, keys } from "../core/redis.js";
 import { syncLeadStage, getStageGoalForLead } from "../core/pipeline.js";
+import { autoAssignNewLead } from "../core/crm.js";
 import { config } from "../config.js";
 import { logger } from "../core/logger.js";
 import { executeHandoff, pauseAi } from "./handoff.js";
@@ -305,6 +306,12 @@ export async function runTurn(
   const lead =
     (await getLead(tenant.id, waId)) ??
     (await upsertLead(tenant.id, waId, { nome: pushName ?? null }));
+
+  // CRM: round-robin distribui o lead novo entre os vendedores (no-op se manual
+  // ou se ja tem dono). Best-effort — nunca trava o turno.
+  await autoAssignNewLead(tenant.id, lead.id, tenant.lead_distribution).catch((err) =>
+    logger.warn({ err, tenant: tenant.slug, waId }, "crm: auto-assign falhou (seguindo)"),
+  );
 
   // ÚNICA condição que silencia a IA: pause manual do owner.
   if (lead.paused) {

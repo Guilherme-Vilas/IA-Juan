@@ -17,11 +17,13 @@ export function LeadCard({
   onClick,
   ageLabel,
   stale,
+  assigneeName,
 }: {
   lead: Lead;
   onClick: () => void;
   ageLabel?: string;
   stale?: boolean;
+  assigneeName?: string;
 }) {
   const name = lead.nome ?? lead.slots.nome ?? lead.wa_id;
   const initials = (name || "?")
@@ -59,7 +61,12 @@ export function LeadCard({
         {lead.slots.interesse && (
           <Badge className="bg-canvas-surface-2 text-ink">{lead.slots.interesse}</Badge>
         )}
-        {lead.slots.valor_bem && (
+        {lead.value_cents != null && (
+          <Badge className="bg-accent-bronze/15 text-accent-bronze-soft">
+            {formatCurrency(lead.value_cents / 100)}
+          </Badge>
+        )}
+        {lead.value_cents == null && lead.slots.valor_bem && (
           <Badge className="bg-success/10 text-success">
             {formatCurrency(lead.slots.valor_bem)}
           </Badge>
@@ -99,6 +106,18 @@ export function LeadCard({
           </span>
         )}
       </div>
+
+      {assigneeName && (
+        <div className="mt-2 flex items-center gap-1.5 border-t border-line/60 pt-2 text-[11px] text-ink-muted">
+          <span
+            className="grid h-4 w-4 place-items-center rounded-full bg-canvas-surface-2 text-[8px] font-semibold text-ink"
+            title="Responsável"
+          >
+            {assigneeName.charAt(0).toUpperCase()}
+          </span>
+          <span className="truncate">{assigneeName}</span>
+        </div>
+      )}
     </button>
   );
 }

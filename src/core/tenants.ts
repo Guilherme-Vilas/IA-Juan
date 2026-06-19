@@ -15,6 +15,9 @@ export type TenantRow = {
   prompt_dir: string;
   playbook_slug: string | null;
   active: boolean;
+  // CRM: distribuicao de leads novos (manual | round_robin) + ponteiro do rodizio.
+  lead_distribution: "manual" | "round_robin";
+  last_assigned_user_id: number | null;
   created_at: Date;
   updated_at: Date;
 };

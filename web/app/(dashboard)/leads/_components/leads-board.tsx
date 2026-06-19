@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import type { Lead, PipelineStage } from "@/lib/types";
+import { useEffect, useMemo, useState } from "react";
+import type { Lead, PipelineStage, TenantMember } from "@/lib/types";
 import { LeadCard } from "./lead-card";
 import { LeadDrawer } from "./lead-drawer";
 import { StageEditor } from "./stage-editor";
@@ -33,12 +33,27 @@ function ageInfo(lead: Lead, stage?: PipelineStage): { label: string; stale: boo
 export function LeadsBoard({
   initial,
   initialStages,
+  members,
+  distribution,
 }: {
   initial: Lead[];
   initialStages: PipelineStage[];
+  members: TenantMember[];
+  distribution: "manual" | "round_robin";
 }) {
   const [leads, setLeads] = useState<Lead[]>(initial);
   const [stages, setStages] = useState<PipelineStage[]>(initialStages);
+  const [dist, setDist] = useState(distribution);
+  const memberById = useMemo(() => new Map(members.map((m) => [m.user_id, m])), [members]);
+
+  function changeDist(mode: "manual" | "round_robin") {
+    setDist(mode);
+    fetch("/api/distribution", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ mode }),
+    }).catch(() => setDist(distribution));
+  }
   const [selected, setSelected] = useState<string | null>(null);
   const [editing, setEditing] = useState(false);
   const [dragOver, setDragOver] = useState<number | null>(null);
@@ -118,12 +133,26 @@ export function LeadsBoard({
         <span className="text-xs text-ink-muted">
           {visible.length} no funil · arraste pra mover · a IA move sozinha conforme qualifica
         </span>
-        <button
-          onClick={() => setEditing(true)}
-          className="flex items-center gap-1.5 rounded-md border border-line px-2.5 py-1.5 text-xs text-ink-soft transition-colors hover:bg-canvas-surface-2 hover:text-ink"
-        >
-          <Settings2 size={14} /> Editar etapas
-        </button>
+        <div className="flex items-center gap-2">
+          <label className="flex items-center gap-1.5 text-xs text-ink-muted">
+            Distribuição:
+            <select
+              value={dist}
+              onChange={(e) => changeDist(e.target.value as "manual" | "round_robin")}
+              className="rounded-md border border-line bg-canvas-deep px-2 py-1 text-xs text-ink focus:border-line-strong focus:outline-none"
+              title="Como leads novos são atribuídos"
+            >
+              <option value="manual">Manual</option>
+              <option value="round_robin">Round-robin</option>
+            </select>
+          </label>
+          <button
+            onClick={() => setEditing(true)}
+            className="flex items-center gap-1.5 rounded-md border border-line px-2.5 py-1.5 text-xs text-ink-soft transition-colors hover:bg-canvas-surface-2 hover:text-ink"
+          >
+            <Settings2 size={14} /> Editar etapas
+          </button>
+        </div>
       </div>
 
       <div className="flex flex-1 gap-3 overflow-x-auto px-4 py-4">
@@ -172,7 +201,15 @@ export function LeadsBoard({
                             l.stage_manual ? "rounded-md ring-1 ring-accent-bronze/40" : ""
                           }`}
                         >
-                          <LeadCard lead={l} onClick={() => setSelected(l.wa_id)} ageLabel={label} stale={stale} />
+                          <LeadCard
+                            lead={l}
+                            onClick={() => setSelected(l.wa_id)}
+                            ageLabel={label}
+                            stale={stale}
+                            assigneeName={
+                              l.assigned_user_id ? memberById.get(l.assigned_user_id)?.name : undefined
+                            }
+                          />
                         </div>
                       );
                     })}
@@ -184,7 +221,7 @@ export function LeadsBoard({
         })}
       </div>
 
-      <LeadDrawer waId={selected} onClose={() => setSelected(null)} onChange={refresh} />
+      <LeadDrawer waId={selected} onClose={() => setSelected(null)} onChange={refresh} members={members} />
 
       {editing && (
         <StageEditor

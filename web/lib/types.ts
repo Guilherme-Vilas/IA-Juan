@@ -82,6 +82,24 @@ export type Lead = {
   outcome_reason: string;
   outcome_at: string | null;
   stage_entered_at: string;
+  // CRM Lote 1: valor do negocio + vendedor responsavel
+  value_cents: number | null;
+  assigned_user_id: number | null;
+};
+
+export type TenantMember = {
+  user_id: number;
+  name: string;
+  email: string;
+  role: "owner" | "admin" | "sdr" | "viewer";
+};
+
+export type LeadNote = {
+  id: number;
+  body: string;
+  user_id: number | null;
+  author: string | null;
+  created_at: string;
 };
 
 // ===== Pipeline configuravel (CRM) =====

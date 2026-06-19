@@ -10,6 +10,7 @@ import {
   type ClosedReason,
 } from "@/lib/types";
 import { getCurrentTenant } from "@/lib/tenant";
+import { formatCurrency } from "@/lib/utils";
 
 export const dynamic = "force-dynamic";
 
@@ -38,6 +39,12 @@ async function getData(tenantId: number) {
   const outcomes = await pool.query<{ won: string; lost: string }>(
     `SELECT COUNT(*) FILTER (WHERE outcome='won')::text AS won,
             COUNT(*) FILTER (WHERE outcome='lost')::text AS lost
+       FROM leads WHERE tenant_id = $1`,
+    [tenantId],
+  );
+  const values = await pool.query<{ won_value: string; open_value: string }>(
+    `SELECT COALESCE(SUM(value_cents) FILTER (WHERE outcome='won'),0)::text AS won_value,
+            COALESCE(SUM(value_cents) FILTER (WHERE status='open' AND outcome IS NULL),0)::text AS open_value
        FROM leads WHERE tenant_id = $1`,
     [tenantId],
   );
@@ -82,6 +89,8 @@ async function getData(tenantId: number) {
     won,
     lost,
     winRate: won + lost > 0 ? Math.round((won / (won + lost)) * 100) : null,
+    wonValue: Number(values.rows[0]?.won_value ?? 0) / 100,
+    openValue: Number(values.rows[0]?.open_value ?? 0) / 100,
     closed: closed.rows.map((r) => ({ reason: r.reason, count: Number(r.count) })),
     totals: totals.rows[0]!,
     agendados: Number(agendados.rows[0]?.c ?? 0),
@@ -103,6 +112,10 @@ export default async function MetricsPage() {
           <Stat label="Ganhos" value={d.won} />
           <Stat label="Perdidos" value={d.lost} />
           <Stat label="Conversão" value={d.winRate == null ? "—" : `${d.winRate}%`} accent />
+        </div>
+        <div className="grid grid-cols-2 gap-3">
+          <Stat label="Receita ganha" value={formatCurrency(d.wonValue)} accent />
+          <Stat label="Pipeline aberto" value={formatCurrency(d.openValue)} />
         </div>
 
         <Card>

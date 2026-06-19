@@ -170,6 +170,33 @@ export function pipelineApi(slug: string) {
   };
 }
 
+export function crmApi(slug: string) {
+  return {
+    members: () => adminCall(`/admin/tenants/${slug}/members`, { method: "GET" }),
+    assign: (waId: string, userId: number | null) =>
+      adminCall(`/admin/tenants/${slug}/leads/${waId}/assign`, {
+        method: "POST",
+        body: JSON.stringify({ user_id: userId }),
+      }),
+    setValue: (waId: string, value: number | null) =>
+      adminCall(`/admin/tenants/${slug}/leads/${waId}/value`, {
+        method: "POST",
+        body: JSON.stringify({ value }),
+      }),
+    notes: (waId: string) => adminCall(`/admin/tenants/${slug}/leads/${waId}/notes`, { method: "GET" }),
+    addNote: (waId: string, body: string) =>
+      adminCall(`/admin/tenants/${slug}/leads/${waId}/notes`, {
+        method: "POST",
+        body: JSON.stringify({ body }),
+      }),
+    setDistribution: (mode: "manual" | "round_robin") =>
+      adminCall(`/admin/tenants/${slug}/distribution`, {
+        method: "PATCH",
+        body: JSON.stringify({ mode }),
+      }),
+  };
+}
+
 export function knowledgeApi(slug: string) {
   return {
     list: () => adminCall(`/admin/tenants/${slug}/knowledge`, { method: "GET" }),
