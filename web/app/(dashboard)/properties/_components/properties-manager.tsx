@@ -89,7 +89,7 @@ export function PropertiesManager({
         <span className="text-sm text-ink-muted">{initial.length} imóveis no catálogo</span>
         <div className="flex gap-2">
           <Button variant="outline" size="sm" onClick={() => setImporting(true)}>
-            <Upload size={14} /> Importar CSV
+            <Upload size={14} /> Importar dados
           </Button>
           <Button size="sm" onClick={() => setEditing(toDraft())}>
             <Plus size={14} /> Novo imóvel
@@ -165,7 +165,7 @@ export function PropertiesManager({
       </div>
 
       {editing && <PropertyForm draft={editing} onClose={() => setEditing(null)} onSaved={() => router.refresh()} />}
-      {importing && <CsvImport onClose={() => setImporting(false)} onDone={() => router.refresh()} />}
+      {importing && <DocImport onClose={() => setImporting(false)} onDone={() => router.refresh()} />}
     </div>
   );
 }
@@ -360,53 +360,148 @@ function PropertyForm({ draft, onClose, onSaved }: { draft: Draft; onClose: () =
   );
 }
 
-function CsvImport({ onClose, onDone }: { onClose: () => void; onDone: () => void }) {
+function fileToBase64(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const r = new FileReader();
+    r.onload = () => resolve(String(r.result).split(",")[1] ?? "");
+    r.onerror = reject;
+    r.readAsDataURL(file);
+  });
+}
+
+type ImportMode = "file" | "link" | "paste";
+
+// Importador universal: arquivo (CSV/Excel/PDF), link de planilha ou colar CSV.
+// A IA normaliza os dados de qualquer layout pros campos do catálogo.
+function DocImport({ onClose, onDone }: { onClose: () => void; onDone: () => void }) {
+  const [mode, setMode] = useState<ImportMode>("file");
+  const [file, setFile] = useState<File | null>(null);
+  const [url, setUrl] = useState("");
   const [csv, setCsv] = useState("");
   const [busy, setBusy] = useState(false);
-  const [result, setResult] = useState<string | null>(null);
+  const [result, setResult] = useState<{ kind: "ok" | "err"; text: string } | null>(null);
 
   async function run() {
     setBusy(true);
     setResult(null);
     try {
-      const res = await fetch("/api/properties/import", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ csv }),
-      });
+      let res: Response;
+      if (mode === "file") {
+        if (!file) throw new Error("escolha um arquivo");
+        const base64 = await fileToBase64(file);
+        res = await fetch("/api/properties/import-document", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ filename: file.name, base64 }),
+        });
+      } else if (mode === "link") {
+        res = await fetch("/api/properties/import-url", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ url }),
+        });
+      } else {
+        res = await fetch("/api/properties/import", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ csv }),
+        });
+      }
       const data = await res.json();
-      if (!res.ok) throw new Error(data?.error ?? "falha");
-      setResult(`Importados: ${data.imported} · Ignorados: ${data.skipped}`);
+      if (!res.ok) throw new Error(data?.error ?? "falha ao importar");
+      const found = data.found ?? data.imported + (data.skipped ?? 0);
+      setResult({
+        kind: "ok",
+        text: `${data.imported ?? 0} criados · ${data.updated ?? 0} atualizados · ${data.skipped ?? 0} ignorados (de ${found} encontrados).`,
+      });
       onDone();
     } catch (e) {
-      setResult(String(e instanceof Error ? e.message : e));
+      setResult({ kind: "err", text: String(e instanceof Error ? e.message : e) });
     } finally {
       setBusy(false);
     }
   }
 
+  const canRun = mode === "file" ? !!file : mode === "link" ? !!url.trim() : !!csv.trim();
+  const tab = (m: ImportMode, label: string) => (
+    <button
+      onClick={() => setMode(m)}
+      className={`rounded-md px-3 py-1.5 text-[13px] transition-colors ${
+        mode === m ? "bg-canvas-surface-2 text-ink" : "text-ink-muted hover:text-ink"
+      }`}
+    >
+      {label}
+    </button>
+  );
+
   return (
     <div className="fixed inset-0 z-50 grid place-items-center bg-black/60 p-4" onClick={onClose}>
-      <div className="w-full max-w-lg rounded-xl border border-line bg-canvas-surface p-5 shadow-elevated" onClick={(e) => e.stopPropagation()}>
-        <h2 className="font-serif text-lg text-ink">Importar CSV</h2>
+      <div
+        className="w-full max-w-lg rounded-xl border border-line bg-canvas-surface p-5 shadow-elevated"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <h2 className="font-serif text-lg text-ink">Importar dados</h2>
         <p className="mt-1 text-xs text-ink-muted">
-          Primeira linha = cabeçalho. Colunas aceitas: titulo, ref, transacao, tipo, preco, quartos, banheiros, vagas,
-          area, bairro, cidade, uf, descricao.
+          Qualquer formato — a IA lê e organiza nos campos do catálogo, atualizando pelo código do imóvel.
         </p>
-        <textarea
-          value={csv}
-          onChange={(e) => setCsv(e.target.value)}
-          rows={8}
-          placeholder="titulo,preco,quartos,bairro,cidade,uf&#10;Apto Centro,450000,3,Centro,Curitiba,PR"
-          className="mt-3 w-full resize-none rounded-md border border-line bg-canvas-deep px-3 py-2 font-mono text-xs text-ink focus:border-line-strong focus:outline-none"
-        />
-        {result && <div className="mt-2 rounded-md border border-line bg-canvas-deep px-3 py-2 text-sm text-ink-soft">{result}</div>}
+
+        <div className="mt-3 inline-flex gap-1 rounded-lg border border-line bg-canvas-deep p-1">
+          {tab("file", "Arquivo")}
+          {tab("link", "Link")}
+          {tab("paste", "Colar CSV")}
+        </div>
+
+        <div className="mt-3">
+          {mode === "file" && (
+            <label className="flex cursor-pointer flex-col items-center justify-center gap-2 rounded-lg border border-dashed border-line bg-canvas-deep py-8 text-center hover:border-line-strong">
+              <Upload size={20} className="text-ink-muted" />
+              <span className="text-sm text-ink-soft">{file ? file.name : "Escolher arquivo"}</span>
+              <span className="text-[11px] text-ink-faint">CSV · Excel (.xlsx/.xls) · PDF</span>
+              <input
+                type="file"
+                accept=".csv,.tsv,.xlsx,.xls,.pdf"
+                className="hidden"
+                onChange={(e) => setFile(e.target.files?.[0] ?? null)}
+              />
+            </label>
+          )}
+          {mode === "link" && (
+            <input
+              value={url}
+              onChange={(e) => setUrl(e.target.value)}
+              placeholder="Link do Google Sheets (publicado) ou de um CSV"
+              className="w-full rounded-md border border-line bg-canvas-deep px-3 py-2 text-sm text-ink focus:border-line-strong focus:outline-none"
+            />
+          )}
+          {mode === "paste" && (
+            <textarea
+              value={csv}
+              onChange={(e) => setCsv(e.target.value)}
+              rows={7}
+              placeholder="titulo,preco,quartos,bairro,cidade,uf&#10;Apto Centro,450000,3,Centro,Curitiba,PR"
+              className="w-full resize-none rounded-md border border-line bg-canvas-deep px-3 py-2 font-mono text-xs text-ink focus:border-line-strong focus:outline-none"
+            />
+          )}
+        </div>
+
+        {result && (
+          <div
+            className={`mt-3 rounded-md border px-3 py-2 text-[13px] ${
+              result.kind === "ok"
+                ? "border-success/30 bg-success/10 text-success"
+                : "border-danger/30 bg-danger/10 text-danger"
+            }`}
+          >
+            {result.text}
+          </div>
+        )}
+
         <div className="mt-4 flex justify-end gap-2">
-          <Button variant="ghost" onClick={onClose}>
+          <Button variant="ghost" onClick={onClose} disabled={busy}>
             Fechar
           </Button>
-          <Button onClick={run} disabled={busy || !csv.trim()}>
-            {busy ? "Importando…" : "Importar"}
+          <Button onClick={run} disabled={busy || !canRun}>
+            {busy ? "A IA está lendo…" : "Importar"}
           </Button>
         </div>
       </div>

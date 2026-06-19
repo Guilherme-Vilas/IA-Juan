@@ -105,6 +105,27 @@ export async function updateProperty(
   return (rowCount ?? 0) > 0;
 }
 
+// Upsert por codigo (ref): se ja existe imovel com aquele ref no tenant, atualiza;
+// senao cria. Sem ref -> sempre cria. Usado pela agregacao de documentos.
+export async function upsertProperty(
+  tenantId: number,
+  input: PropertyInput,
+): Promise<"created" | "updated"> {
+  const ref = (input.ref ?? "").trim();
+  if (ref) {
+    const existing = await pool.query<{ id: number }>(
+      `SELECT id FROM properties WHERE tenant_id = $1 AND ref = $2 LIMIT 1`,
+      [tenantId, ref],
+    );
+    if (existing.rows[0]) {
+      await updateProperty(tenantId, existing.rows[0].id, input);
+      return "updated";
+    }
+  }
+  await createProperty(tenantId, input);
+  return "created";
+}
+
 export async function deleteProperty(tenantId: number, id: number): Promise<boolean> {
   const { rowCount } = await pool.query(`DELETE FROM properties WHERE id = $1 AND tenant_id = $2`, [
     id,
@@ -200,7 +221,7 @@ function parseCsv(text: string): string[][] {
   return rows;
 }
 
-function moneyToCents(v: string): number | null {
+export function moneyToCents(v: string): number | null {
   const clean = v.replace(/[^0-9.,]/g, "").trim();
   if (!clean) return null;
   // formato BR "450.000,00" -> remove pontos, troca virgula por ponto
@@ -209,7 +230,7 @@ function moneyToCents(v: string): number | null {
   return Number.isNaN(n) ? null : Math.round(n * 100);
 }
 
-function intOrNull(v: string): number | null {
+export function intOrNull(v: string): number | null {
   const n = parseInt(v.replace(/[^0-9-]/g, ""), 10);
   return Number.isNaN(n) ? null : n;
 }

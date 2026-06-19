@@ -78,6 +78,24 @@ export async function chat(opts: ChatOpts) {
   }
 }
 
+// Extracao estruturada: força JSON e devolve o objeto parseado. Usado pelo
+// importador universal de documentos (normaliza dados de qualquer formato).
+export async function extractJson<T = unknown>(
+  messages: ChatMessage[],
+  opts: { maxTokens?: number; temperature?: number } = {},
+): Promise<T> {
+  const model = config.OPENAI_MODEL_MAIN;
+  const res = await openai.chat.completions.create({
+    model,
+    messages: messages as never,
+    temperature: opts.temperature ?? 0,
+    max_tokens: opts.maxTokens ?? 4000,
+    response_format: { type: "json_object" },
+  });
+  const text = res.choices[0]?.message?.content ?? "{}";
+  return JSON.parse(text) as T;
+}
+
 export async function classify(prompt: string, options: string[]): Promise<string> {
   const choice = await chat({
     model: "fast",

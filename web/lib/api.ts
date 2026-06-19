@@ -261,6 +261,16 @@ export function propertiesApi(slug: string) {
         method: "POST",
         body: JSON.stringify({ csv }),
       }),
+    importDocument: (filename: string, base64: string) =>
+      adminCall(`/admin/tenants/${slug}/properties/import-document`, {
+        method: "POST",
+        body: JSON.stringify({ filename, base64 }),
+      }),
+    importUrl: (url: string) =>
+      adminCall(`/admin/tenants/${slug}/properties/import-url`, {
+        method: "POST",
+        body: JSON.stringify({ url }),
+      }),
     feedUrl: () => adminCall(`/admin/tenants/${slug}/properties/feed-url`, { method: "GET" }),
   };
 }
