@@ -397,6 +397,39 @@ export type CampaignStep = {
   variants: CampaignStepVariant[];
 };
 
+// ===== Busca de leads (discovery, Fase 3) =====
+
+export type DiscoveryStatus = "queued" | "running" | "done" | "failed";
+
+export type DiscoverySearch = {
+  id: number;
+  name: string;
+  source: string;
+  filters: Record<string, unknown>;
+  status: DiscoveryStatus;
+  requested_count: number;
+  found_count: number;
+  with_phone_count: number;
+  whatsapp_count: number;
+  error_msg: string | null;
+  exported_campaign_id: number | null;
+  created_at: string;
+};
+
+export const DISCOVERY_STATUS_LABELS: Record<DiscoveryStatus, string> = {
+  queued: "Na fila",
+  running: "Buscando…",
+  done: "Concluída",
+  failed: "Falhou",
+};
+
+export const DISCOVERY_STATUS_COLORS: Record<DiscoveryStatus, string> = {
+  queued: "bg-info/10 text-info",
+  running: "bg-warning/15 text-warning",
+  done: "bg-success/15 text-success",
+  failed: "bg-danger/15 text-danger",
+};
+
 export type FunnelCell = {
   step_id: number | null;
   position: number | null;

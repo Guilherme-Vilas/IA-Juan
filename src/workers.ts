@@ -14,13 +14,14 @@ async function main() {
   await import("./workers/followup.worker.js");
   await import("./workers/prospect.worker.js");
   await import("./workers/retry.worker.js");
+  await import("./workers/discovery.worker.js");
 
   // Agenda o tick de prospeccao como repeatable job (idempotente entre replicas).
   await ensureProspectTickScheduled(config.PROSPECT_TICK_MS);
 
   logger.info(
     { intervalMs: config.PROSPECT_TICK_MS },
-    "workers up (inbound, followup, prospect-send, prospect-tick, retry)",
+    "workers up (inbound, followup, prospect-send, prospect-tick, retry, discovery)",
   );
 
   const shutdown = (sig: string) => {

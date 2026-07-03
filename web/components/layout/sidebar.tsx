@@ -19,6 +19,7 @@ import {
   Users,
   Ticket,
   LogOut,
+  Radar,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { LogoMark } from "@/components/ui/logo";
@@ -37,6 +38,7 @@ const groups: NavGroup[] = [
       { href: "/agenda", label: "Agenda", icon: Calendar },
       { href: "/properties", label: "Imóveis", icon: Building2 },
       { href: "/prospect", label: "Prospecção", icon: Send },
+      { href: "/discovery", label: "Buscar leads", icon: Radar },
     ],
   },
   {

@@ -31,11 +31,21 @@ export type RetryTurnJob = {
 // Idempotente entre replicas: o BullMQ garante 1 disparo por janela mesmo com N workers.
 export type ProspectTickJob = Record<string, never>;
 
+// Busca de leads (discovery): roda o pipeline busca→enriquece→valida em background.
+export type DiscoveryJob = {
+  searchId: number;
+};
+
 export const inboundQueue = new Queue<InboundJob>("inbound", bullConnection);
 export const followupQueue = new Queue<FollowupJob>("followup", bullConnection);
 export const prospectSendQueue = new Queue<ProspectSendJob>("prospect-send", bullConnection);
 export const prospectTickQueue = new Queue<ProspectTickJob>("prospect-tick", bullConnection);
 export const retryTurnQueue = new Queue<RetryTurnJob>("retry-turn", bullConnection);
+export const discoveryQueue = new Queue<DiscoveryJob>("discovery", bullConnection);
+
+export function discoveryJobId(searchId: number): string {
+  return `discovery-${searchId}`;
+}
 
 // Registra o repeatable job do tick. Chamar uma vez no boot do processo de workers.
 // `jobId` fixo + repeat garante que so existe 1 schedule, mesmo com varias replicas.

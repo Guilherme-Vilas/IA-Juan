@@ -86,6 +86,13 @@ const schema = z.object({
   PROSPECT_TICK_MS: z.coerce.number().default(5 * 60 * 1000),
   PROSPECT_JITTER_MS: z.coerce.number().default(10 * 60 * 1000),
   PROSPECT_DEFAULT_RATE_PER_DAY: z.coerce.number().default(30),
+
+  // Busca de leads (discovery) — fontes públicas de CNPJ.
+  // Casa dos Dados: busca filtrada (CNAE/UF/capital). minhareceita: detalhe
+  // por CNPJ (telefones, sócios, email). Ambas configuráveis pra troca de fonte.
+  CASADOSDADOS_BASE_URL: z.string().url().default("https://api.casadosdados.com.br"),
+  MINHARECEITA_BASE_URL: z.string().url().default("https://minhareceita.org"),
+  DISCOVERY_MAX_RESULTS: z.coerce.number().default(300),
 });
 
 export const config = schema.parse(process.env);
