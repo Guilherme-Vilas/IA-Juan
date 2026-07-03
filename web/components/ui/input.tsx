@@ -5,7 +5,8 @@ import { cn } from "@/lib/utils";
 
 const base =
   "w-full rounded-md border border-line bg-canvas-deep px-3 py-2 text-[13px] text-ink placeholder:text-ink-faint " +
-  "transition-colors focus:border-line-strong focus:outline-none focus:ring-1 focus:ring-white/20";
+  "transition-all duration-200 focus:border-accent-bronze/50 focus:outline-none " +
+  "focus:ring-2 focus:ring-accent-bronze/15 focus:shadow-[0_0_20px_-6px_rgba(176,141,87,0.35)]";
 
 export const Input = React.forwardRef<
   HTMLInputElement,

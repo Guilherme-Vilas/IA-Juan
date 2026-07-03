@@ -6,11 +6,14 @@ import { formatCurrency, formatRelative } from "@/lib/utils";
 import { Pause, MessageSquare, MapPin, Clock, Trophy, XCircle } from "lucide-react";
 
 const SCORE_BADGES: Record<Lead["score_label"], string> = {
-  frio: "bg-canvas-surface-2 text-ink",
-  morno: "bg-warning/15 text-warning",
-  quente: "bg-orange-100 text-orange-700",
-  pronto: "bg-success/15 text-success",
+  frio: "bg-canvas-surface-2 text-ink-soft",
+  morno: "bg-warning/15 text-warning border-warning/20",
+  quente: "bg-orange-400/15 text-orange-300 border-orange-400/25",
+  pronto: "bg-success/15 text-success border-success/25",
 };
+
+// leads quentes/prontos pulsam — o olho vai direto neles
+const HOT = new Set<Lead["score_label"]>(["quente", "pronto"]);
 
 export function LeadCard({
   lead,
@@ -35,11 +38,14 @@ export function LeadCard({
   return (
     <button
       onClick={onClick}
-      className="group rounded-md border border-line bg-canvas-surface p-3 text-left text-sm shadow-sm hover:border-line-strong hover:shadow-md"
+      className="group relative w-full rounded-lg border border-line bg-gradient-to-b from-canvas-surface to-canvas-surface/70 p-3 text-left text-sm shadow-card transition-all duration-300 hover:-translate-y-[2px] hover:border-accent-bronze/35 hover:shadow-glow-bronze"
     >
       <div className="flex items-start gap-2">
-        <div className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-canvas-surface-2 text-xs font-semibold text-accent-bronze">
-          {initials}
+        {/* avatar com anel bronze — a luz da marca em cada lead */}
+        <div className="shrink-0 rounded-full bg-gradient-to-b from-accent-bronze/50 to-transparent p-px">
+          <div className="grid h-8 w-8 place-items-center rounded-full bg-canvas-surface-2 text-xs font-semibold text-accent-bronze-soft">
+            {initials}
+          </div>
         </div>
         <div className="min-w-0 flex-1">
           <div className="flex items-center justify-between gap-2">
@@ -56,6 +62,12 @@ export function LeadCard({
 
       <div className="mt-2 flex flex-wrap gap-1">
         <Badge className={SCORE_BADGES[lead.score_label]}>
+          {HOT.has(lead.score_label) && (
+            <span className="relative flex h-1.5 w-1.5">
+              <span className="absolute inline-flex h-full w-full animate-ping-dot rounded-full bg-current" />
+              <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-current" />
+            </span>
+          )}
           {lead.score_label} · {lead.score}
         </Badge>
         {lead.slots.interesse && (
@@ -65,7 +77,7 @@ export function LeadCard({
           <Badge className="bg-info/10 text-info">{lead.source}</Badge>
         )}
         {lead.value_cents != null && (
-          <Badge className="bg-accent-bronze/15 text-accent-bronze-soft">
+          <Badge className="border-accent-bronze/25 bg-accent-bronze/15 text-accent-bronze-soft">
             {formatCurrency(lead.value_cents / 100)}
           </Badge>
         )}
@@ -75,22 +87,22 @@ export function LeadCard({
           </Badge>
         )}
         {lead.slots.mora_exterior && (
-          <Badge className="bg-blue-50 text-blue-700">
+          <Badge className="bg-info/10 text-info">
             <MapPin size={10} /> exterior
           </Badge>
         )}
         {lead.outcome === "won" && (
-          <Badge className="bg-success/15 text-success">
+          <Badge className="border-success/25 bg-success/15 text-success">
             <Trophy size={10} /> Ganho
           </Badge>
         )}
         {lead.outcome === "lost" && (
-          <Badge className="bg-danger/15 text-danger">
+          <Badge className="border-danger/25 bg-danger/15 text-danger">
             <XCircle size={10} /> Perdido
           </Badge>
         )}
         {!lead.outcome && lead.status === "closed" && lead.closed_reason && (
-          <Badge className="bg-red-50 text-red-700">{REASON_LABELS[lead.closed_reason]}</Badge>
+          <Badge className="bg-danger/10 text-danger">{REASON_LABELS[lead.closed_reason]}</Badge>
         )}
       </div>
 

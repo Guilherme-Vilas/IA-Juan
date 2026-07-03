@@ -74,23 +74,30 @@ export function Sidebar({
 }) {
   const pathname = usePathname();
   return (
-    <aside className="flex h-full w-[244px] shrink-0 flex-col border-r border-line bg-canvas-deep px-3 py-5">
+    <aside className="relative flex h-full w-[248px] shrink-0 flex-col border-r border-line/80 bg-canvas-deep/70 px-3 py-5 backdrop-blur-2xl">
+      {/* véu bronze no topo — a marca irradia */}
+      <div
+        aria-hidden
+        className="pointer-events-none absolute inset-x-0 top-0 h-44 bg-bronze-veil"
+      />
+
       {/* Marca — Vita OS */}
-      <div className="flex items-center gap-2.5 px-2 pb-6">
-        <LogoMark className="h-8 w-8 border border-line" />
+      <div className="relative flex items-center gap-2.5 px-2 pb-6">
+        <LogoMark className="brand-halo h-9 w-9 border border-accent-bronze/30" />
         <div className="leading-none">
-          <div className="font-serif text-[15px] text-ink">Vita OS</div>
-          <div className="mt-0.5 text-[10px] uppercase tracking-[0.15em] text-ink-faint">
+          <div className="font-serif text-[16px] tracking-tight text-ink">Vita OS</div>
+          <div className="mt-1 flex items-center gap-1.5 text-[9px] uppercase tracking-[0.22em] text-ink-faint">
+            <span className="inline-block h-1 w-1 rounded-full bg-accent-bronze animate-pulse-soft" />
             Platform
           </div>
         </div>
       </div>
 
-      <nav className="flex flex-1 flex-col gap-0.5">
+      <nav className="stagger relative flex flex-1 flex-col gap-0.5 overflow-y-auto">
         {groups.map((group, gi) => (
           <div key={gi} className="mb-1">
             {group.label && (
-              <div className="px-2.5 pb-1 pt-4 text-[10px] font-medium uppercase tracking-[0.12em] text-ink-faint">
+              <div className="px-2.5 pb-1 pt-4 text-[10px] font-medium uppercase tracking-[0.14em] text-ink-faint">
                 {group.label}
               </div>
             )}
@@ -103,13 +110,29 @@ export function Sidebar({
                   key={href}
                   href={href}
                   className={cn(
-                    "flex items-center gap-2.5 rounded-md px-2.5 py-2 text-[13px] transition-colors",
+                    "group relative flex items-center gap-2.5 rounded-md px-2.5 py-2 text-[13px] transition-all duration-200",
                     active
-                      ? "bg-canvas-surface text-ink"
-                      : "text-ink-muted hover:bg-canvas-surface/60 hover:text-ink",
+                      ? "bg-gradient-to-r from-canvas-surface to-canvas-surface/20 text-ink"
+                      : "text-ink-muted hover:translate-x-[2px] hover:bg-canvas-surface/60 hover:text-ink",
                   )}
                 >
-                  <Icon size={16} strokeWidth={1.75} className={active ? "text-ink" : "text-ink-muted"} />
+                  {/* indicador bronze incandescente da rota ativa */}
+                  {active && (
+                    <span
+                      aria-hidden
+                      className="absolute left-0 top-1/2 h-4 w-[2px] -translate-y-1/2 rounded-full bg-accent-bronze shadow-[0_0_10px_rgba(176,141,87,0.9)]"
+                    />
+                  )}
+                  <Icon
+                    size={16}
+                    strokeWidth={1.75}
+                    className={cn(
+                      "transition-colors duration-200",
+                      active
+                        ? "text-accent-bronze-soft drop-shadow-[0_0_6px_rgba(176,141,87,0.5)]"
+                        : "text-ink-muted group-hover:text-ink-soft",
+                    )}
+                  />
                   {label}
                 </Link>
               );
@@ -118,9 +141,11 @@ export function Sidebar({
         ))}
       </nav>
 
-      <div className="mt-2 border-t border-line pt-3">
+      <div className="relative mt-2 pt-3">
+        {/* hairline bronze separando o rodapé */}
+        <div aria-hidden className="absolute inset-x-1 top-0 h-px bg-bronze-line opacity-60" />
         <div className="flex items-center gap-2.5 px-1.5">
-          <div className="grid h-7 w-7 place-items-center rounded-md border border-line bg-canvas-surface text-[11px] font-semibold text-ink">
+          <div className="grid h-7 w-7 shrink-0 place-items-center rounded-md border border-accent-bronze/30 bg-gradient-to-b from-canvas-surface-2 to-canvas-surface text-[11px] font-semibold text-accent-bronze-soft">
             {userLabel.charAt(0).toUpperCase()}
           </div>
           <div className="min-w-0 flex-1 leading-tight">

@@ -29,7 +29,11 @@ export const metadata: Metadata = {
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="pt-BR" className={`${inter.variable} ${serif.variable}`}>
-      <body className="font-sans">{children}</body>
+      <body className="font-sans">
+        {/* aurora bronze fixa atrás de toda a interface */}
+        <div className="atmosphere" aria-hidden />
+        {children}
+      </body>
     </html>
   );
 }

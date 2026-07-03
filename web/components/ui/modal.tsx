@@ -32,7 +32,7 @@ export function Modal({
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       {/* backdrop com vidro (macOS) */}
       <div
-        className="glass absolute inset-0 bg-black/50"
+        className="absolute inset-0 animate-fade-in bg-black/60 backdrop-blur-md"
         onClick={onClose}
         aria-hidden
       />
@@ -40,7 +40,10 @@ export function Modal({
         role="dialog"
         aria-modal="true"
         className={cn(
-          "relative z-10 w-full max-w-lg overflow-hidden rounded-xl border border-line-strong bg-canvas-surface shadow-elevated",
+          "relative z-10 w-full max-w-lg animate-scale-in overflow-hidden rounded-xl border border-line-strong bg-canvas-surface bg-sheen shadow-elevated",
+          // hairline de luz no topo do painel
+          "before:pointer-events-none before:absolute before:inset-x-6 before:top-0 before:h-px",
+          "before:bg-gradient-to-r before:from-transparent before:via-accent-bronze/40 before:to-transparent before:content-['']",
           className,
         )}
       >

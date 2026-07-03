@@ -131,7 +131,7 @@ export function LeadsBoard({
 
   return (
     <div className="flex h-full flex-col">
-      <div className="flex items-center justify-between border-b border-line px-4 py-2">
+      <div className="glass flex items-center justify-between border-b border-line/70 px-4 py-2">
         <span className="text-xs text-ink-muted">
           {visible.length} no funil · arraste pra mover · a IA move sozinha conforme qualifica
         </span>
@@ -158,7 +158,7 @@ export function LeadsBoard({
       </div>
 
       <div className="flex flex-1 gap-3 overflow-x-auto px-4 py-4">
-        {stages.map((stage) => {
+        {stages.map((stage, si) => {
           const col = visible.filter((l) => stageOf(l) === stage.id);
           return (
             <div
@@ -169,13 +169,19 @@ export function LeadsBoard({
               }}
               onDragLeave={() => setDragOver((s) => (s === stage.id ? null : s))}
               onDrop={(e) => handleDrop(stage.id, e)}
-              className={`flex h-full w-72 shrink-0 flex-col rounded-lg bg-canvas-surface shadow-card transition-colors ${
-                dragOver === stage.id ? "ring-2 ring-accent-bronze/60" : ""
+              style={{ animationDelay: `${si * 60}ms` }}
+              className={`flex h-full w-72 shrink-0 animate-fade-up flex-col rounded-xl border bg-canvas-surface/45 shadow-card backdrop-blur-sm transition-all duration-200 ${
+                dragOver === stage.id
+                  ? "scale-[1.01] border-accent-bronze/60 bg-accent-bronze/[0.05] shadow-glow-bronze-strong"
+                  : "border-line/70"
               }`}
             >
-              <div className="flex items-center justify-between border-b border-line px-3 py-2">
+              <div className="flex items-center justify-between border-b border-line/70 px-3 py-2.5">
                 <div className="flex items-center gap-2">
-                  <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: stage.color }} />
+                  <span
+                    className="h-2 w-2 rounded-full"
+                    style={{ backgroundColor: stage.color, boxShadow: `0 0 10px ${stage.color}88` }}
+                  />
                   <span className="text-xs font-semibold uppercase tracking-wide text-ink">{stage.name}</span>
                   {stage.is_won && <Trophy size={11} className="text-success" />}
                   {stage.is_lost && <XCircle size={11} className="text-danger" />}
@@ -185,11 +191,15 @@ export function LeadsBoard({
                     </span>
                   )}
                 </div>
-                <span className="text-xs text-ink-muted">{col.length}</span>
+                <span className="grid h-5 min-w-5 place-items-center rounded-full border border-line bg-canvas-surface-2 px-1.5 text-[10px] font-semibold text-ink-soft">
+                  {col.length}
+                </span>
               </div>
               <div className="flex-1 overflow-y-auto p-2">
                 {col.length === 0 ? (
-                  <div className="grid h-24 place-items-center text-xs text-ink-faint">vazio</div>
+                  <div className="m-1 grid h-24 place-items-center rounded-lg border border-dashed border-line/80 text-xs text-ink-faint">
+                    solte um lead aqui
+                  </div>
                 ) : (
                   <div className="flex flex-col gap-2">
                     {col.map((l) => {
@@ -200,7 +210,7 @@ export function LeadsBoard({
                           draggable
                           onDragStart={(e) => e.dataTransfer.setData("text/plain", l.wa_id)}
                           className={`cursor-grab active:cursor-grabbing ${
-                            l.stage_manual ? "rounded-md ring-1 ring-accent-bronze/40" : ""
+                            l.stage_manual ? "rounded-lg ring-1 ring-accent-bronze/40" : ""
                           }`}
                         >
                           <LeadCard
@@ -243,9 +253,12 @@ export function LeadsBoard({
       )}
 
       {lostPrompt && (
-        <div className="fixed inset-0 z-50 grid place-items-center bg-black/60 p-4" onClick={() => setLostPrompt(null)}>
+        <div
+          className="fixed inset-0 z-50 grid animate-fade-in place-items-center bg-black/60 p-4 backdrop-blur-md"
+          onClick={() => setLostPrompt(null)}
+        >
           <div
-            className="w-full max-w-sm rounded-xl border border-line bg-canvas-surface p-5 shadow-elevated"
+            className="w-full max-w-sm animate-scale-in rounded-xl border border-line-strong bg-canvas-surface bg-sheen p-5 shadow-elevated"
             onClick={(e) => e.stopPropagation()}
           >
             <h3 className="font-serif text-lg text-ink">Motivo da perda</h3>

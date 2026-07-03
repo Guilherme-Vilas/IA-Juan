@@ -48,7 +48,7 @@ export function Conversation({
     <div className="flex h-full flex-col">
       <div ref={scrollRef} className="flex-1 space-y-3 overflow-y-auto py-4">
         {messages.length === 0 && (
-          <div className="grid h-24 place-items-center text-xs text-ink-muted">
+          <div className="grid h-24 place-items-center rounded-lg border border-dashed border-line/80 text-xs text-ink-muted">
             Sem mensagens ainda
           </div>
         )}
@@ -91,10 +91,12 @@ export function Conversation({
 function Bubble({ m }: { m: Message }) {
   const isOut = m.direction === "out";
   return (
-    <div className={`flex ${isOut ? "justify-end" : "justify-start"}`}>
+    <div className={`flex animate-fade-up ${isOut ? "justify-end" : "justify-start"}`}>
       <div
-        className={`max-w-[78%] rounded-2xl px-3 py-2 text-sm ${
-          isOut ? "bg-accent-bronze text-white" : "bg-canvas-surface border border-line text-ink"
+        className={`max-w-[78%] px-3 py-2 text-sm shadow-card ${
+          isOut
+            ? "rounded-2xl rounded-br-sm bg-gradient-to-b from-accent-bronze to-[#9C7A47] text-white shadow-[0_4px_16px_-4px_rgba(176,141,87,0.4)]"
+            : "rounded-2xl rounded-bl-sm border border-line bg-canvas-surface/80 text-ink backdrop-blur-sm"
         }`}
       >
         <div className="whitespace-pre-wrap">{m.content}</div>

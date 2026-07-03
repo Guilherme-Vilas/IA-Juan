@@ -1,7 +1,7 @@
 import { listTenantsForUI, getCurrentTenantSlug } from "@/lib/tenant";
 import { TenantSelector } from "./tenant-selector";
 
-// Header — vidro (macOS) com blur, marca/título serifado.
+// Header — vidro (macOS) com blur, hairline bronze na base, título serifado.
 export async function Header({
   title,
   subtitle,
@@ -21,9 +21,9 @@ export async function Header({
   }
 
   return (
-    <header className="glass sticky top-0 z-20 flex h-16 items-center justify-between border-b border-line px-8">
-      <div>
-        <h1 className="font-serif text-xl text-ink">{title}</h1>
+    <header className="glass hairline-b sticky top-0 z-20 flex h-16 items-center justify-between px-8">
+      <div className="animate-fade-up">
+        <h1 className="font-serif text-xl tracking-tight text-ink">{title}</h1>
         {subtitle && <p className="mt-0.5 text-xs text-ink-muted">{subtitle}</p>}
       </div>
       <div className="flex items-center gap-3">

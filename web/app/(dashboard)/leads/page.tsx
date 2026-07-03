@@ -73,7 +73,7 @@ export default async function LeadsPage() {
         title="Pipeline"
         subtitle={`${tenant.name} · ${openCount} abertos · ${leads.length - openCount} fechados (últimos 30d)`}
       />
-      <div className="flex-1 overflow-hidden bg-canvas">
+      <div className="flex-1 overflow-hidden">
         <LeadsBoard
           initial={leads}
           initialStages={stages}

@@ -18,12 +18,13 @@ export function SheetContent({
   return (
     <DialogPrimitive.Portal>
       <DialogPrimitive.Overlay
-        className="fixed inset-0 z-40 bg-black/40 data-[state=open]:animate-in data-[state=closed]:animate-out"
+        className="fixed inset-0 z-40 bg-black/50 backdrop-blur-sm data-[state=open]:animate-fade-in data-[state=closed]:animate-fade-out"
       />
       <DialogPrimitive.Content
         className={cn(
-          "fixed top-0 z-50 h-full w-full max-w-[640px] bg-canvas-surface shadow-xl",
+          "fixed top-0 z-50 h-full w-full max-w-[640px] border-l border-line bg-canvas-deep/95 shadow-elevated backdrop-blur-2xl",
           "flex flex-col outline-none",
+          "data-[state=open]:animate-slide-in-right data-[state=closed]:animate-slide-out-right",
           side === "right" ? "right-0" : "left-0",
           className,
         )}

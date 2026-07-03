@@ -5,9 +5,7 @@
 html,
 body {
   height: 100%;
-  background:
-    radial-gradient(900px 500px at 85% -15%, rgba(255, 255, 255, 0.035), transparent 60%),
-    theme(colors.canvas.DEFAULT);
+  background: theme(colors.canvas.DEFAULT);
   color: theme(colors.ink.DEFAULT);
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
@@ -18,13 +16,117 @@ body {
   border-color: theme(colors.line.DEFAULT);
 }
 
-/* Títulos com serifa editorial (pegada Claude) */
+/* ============================================================
+   ATMOSFERA — fundo vivo (aurora bronze) + grain de filme.
+   A .atmosphere é renderizada uma vez no root layout, fixa,
+   atrás de tudo. O grain cobre tudo (pointer-events: none).
+   ============================================================ */
+
+.atmosphere {
+  position: fixed;
+  inset: 0;
+  z-index: -10;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+/* blob bronze principal — respira lentamente no topo */
+.atmosphere::before {
+  content: "";
+  position: absolute;
+  top: -32%;
+  left: 50%;
+  width: 1300px;
+  height: 820px;
+  margin-left: -650px;
+  background: radial-gradient(closest-side, rgba(176, 141, 87, 0.14), transparent 68%);
+  filter: blur(70px);
+  will-change: transform;
+  animation: aurora-a 28s ease-in-out infinite;
+}
+
+/* blob secundário — deriva fria no canto oposto */
+.atmosphere::after {
+  content: "";
+  position: absolute;
+  right: -18%;
+  bottom: -38%;
+  width: 1000px;
+  height: 760px;
+  background:
+    radial-gradient(closest-side, rgba(201, 168, 118, 0.07), transparent 66%),
+    radial-gradient(closest-side, rgba(255, 255, 255, 0.03), transparent 60%);
+  filter: blur(90px);
+  will-change: transform;
+  animation: aurora-b 34s ease-in-out infinite;
+}
+
+@keyframes aurora-a {
+  0%,
+  100% {
+    transform: translate3d(-5%, -2%, 0) scale(1);
+  }
+  50% {
+    transform: translate3d(5%, 4%, 0) scale(1.12);
+  }
+}
+
+@keyframes aurora-b {
+  0%,
+  100% {
+    transform: translate3d(3%, 2%, 0) scale(1.04);
+  }
+  50% {
+    transform: translate3d(-5%, -4%, 0) scale(0.94);
+  }
+}
+
+/* grain de filme — textura viva sobre toda a interface */
+body::after {
+  content: "";
+  position: fixed;
+  inset: -60%;
+  z-index: 90;
+  pointer-events: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='300' height='300'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  opacity: 0.022;
+  animation: grain 9s steps(6) infinite;
+}
+
+@keyframes grain {
+  0%,
+  100% {
+    transform: translate(0, 0);
+  }
+  20% {
+    transform: translate(-6%, 4%);
+  }
+  40% {
+    transform: translate(4%, -6%);
+  }
+  60% {
+    transform: translate(-4%, -3%);
+  }
+  80% {
+    transform: translate(5%, 5%);
+  }
+}
+
+/* ============================================================
+   TIPOGRAFIA — serifa editorial (pegada Claude)
+   ============================================================ */
+
 h1,
 h2,
 h3,
 .font-display {
   font-family: theme(fontFamily.serif);
   letter-spacing: -0.01em;
+}
+
+::selection {
+  background: rgba(176, 141, 87, 0.35);
+  color: #fff;
 }
 
 /* Scrollbar discreta */
@@ -59,9 +161,108 @@ select:focus-visible {
   outline-offset: 2px;
 }
 
-/* Utilitário de vidro (macOS) */
+/* ============================================================
+   UTILITÁRIOS DE LUXO
+   ============================================================ */
+
+/* Vidro (macOS) — saturação levemente elevada pro glow atravessar */
 .glass {
   background: theme(colors.canvas.glass);
-  backdrop-filter: blur(20px);
-  -webkit-backdrop-filter: blur(20px);
+  backdrop-filter: blur(20px) saturate(150%);
+  -webkit-backdrop-filter: blur(20px) saturate(150%);
+}
+
+/* hairline bronze na base (headers) */
+.hairline-b {
+  position: relative;
+}
+.hairline-b::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(176, 141, 87, 0.35), transparent);
+}
+
+/* texto com gradiente bronze (números-destaque, marca) */
+.text-bronze-gradient {
+  background: linear-gradient(135deg, #e2c896 0%, #c9a876 40%, #b08d57 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+/* varredura de brilho no hover (botões bronze, CTAs) */
+.shine {
+  position: relative;
+  overflow: hidden;
+  isolation: isolate;
+}
+.shine::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: -160%;
+  width: 55%;
+  background: linear-gradient(105deg, transparent, rgba(255, 255, 255, 0.38), transparent);
+  transform: skewX(-20deg);
+  transition: left 0.65s cubic-bezier(0.4, 0, 0.2, 1);
+  pointer-events: none;
+}
+.shine:hover::after {
+  left: 190%;
+}
+
+/* entrada em cascata — aplicar no container, filhos sobem em sequência */
+@keyframes rise {
+  from {
+    opacity: 0;
+    transform: translateY(14px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+.stagger > * {
+  animation: rise 0.55s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+.stagger > *:nth-child(1) { animation-delay: 0.02s; }
+.stagger > *:nth-child(2) { animation-delay: 0.06s; }
+.stagger > *:nth-child(3) { animation-delay: 0.1s; }
+.stagger > *:nth-child(4) { animation-delay: 0.14s; }
+.stagger > *:nth-child(5) { animation-delay: 0.18s; }
+.stagger > *:nth-child(6) { animation-delay: 0.22s; }
+.stagger > *:nth-child(7) { animation-delay: 0.26s; }
+.stagger > *:nth-child(8) { animation-delay: 0.3s; }
+.stagger > *:nth-child(9) { animation-delay: 0.34s; }
+.stagger > *:nth-child(10) { animation-delay: 0.38s; }
+.stagger > *:nth-child(n + 11) { animation-delay: 0.42s; }
+
+/* halo pulsante da marca (login, sidebar) */
+@keyframes halo {
+  0%,
+  100% {
+    box-shadow: 0 0 0 1px rgba(176, 141, 87, 0.25), 0 0 24px -2px rgba(176, 141, 87, 0.35);
+  }
+  50% {
+    box-shadow: 0 0 0 1px rgba(176, 141, 87, 0.45), 0 0 44px 2px rgba(176, 141, 87, 0.5);
+  }
+}
+.brand-halo {
+  animation: halo 4.5s ease-in-out infinite;
+}
+
+/* acessibilidade: quem pediu menos movimento, recebe menos movimento */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
 }
