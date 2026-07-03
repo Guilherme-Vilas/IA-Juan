@@ -39,7 +39,12 @@ export function CampaignDetail({
 }) {
   const router = useRouter();
   const [csv, setCsv] = useState("");
-  const [uploadResult, setUploadResult] = useState<{ inserted: number; duplicates: number; invalid: { row: number; reason: string }[] } | null>(null);
+  const [uploadResult, setUploadResult] = useState<{
+    inserted: number;
+    duplicates: number;
+    invalid: { row: number; reason: string }[];
+    suppressed?: { blacklisted: number; ja_prospectado: number; lead_existente: number };
+  } | null>(null);
   const [previews, setPreviews] = useState<Preview[] | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -150,6 +155,7 @@ export function CampaignDetail({
               <Metric label="Falhou" value={metrics.failed} />
               <Metric label="Pulado" value={metrics.skipped} />
               <Metric label="Manual" value={metrics.ready_for_manual} />
+              <Metric label="Opt-out" value={metrics.opted_out ?? 0} />
             </div>
             <div className="flex gap-2">
               {campaign.status !== "running" && (
@@ -217,6 +223,17 @@ export function CampaignDetail({
                   <strong>{uploadResult.duplicates}</strong> · Inválidos:{" "}
                   <strong>{uploadResult.invalid.length}</strong>
                 </p>
+                {uploadResult.suppressed &&
+                  (uploadResult.suppressed.blacklisted > 0 ||
+                    uploadResult.suppressed.ja_prospectado > 0 ||
+                    uploadResult.suppressed.lead_existente > 0) && (
+                    <p className="mt-1 text-warning">
+                      Suprimidos pela proteção: <strong>{uploadResult.suppressed.blacklisted}</strong> na
+                      blacklist (opt-out) · <strong>{uploadResult.suppressed.ja_prospectado}</strong> já
+                      prospectados (90d) · <strong>{uploadResult.suppressed.lead_existente}</strong> já são
+                      leads do funil
+                    </p>
+                  )}
                 {uploadResult.invalid.length > 0 && (
                   <ul className="mt-1 list-inside list-disc text-danger">
                     {uploadResult.invalid.slice(0, 5).map((inv, i) => (

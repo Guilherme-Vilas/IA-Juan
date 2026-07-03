@@ -15,8 +15,14 @@ import {
 } from "../prospect/repo.js";
 import { whatsappSender } from "../prospect/senders/whatsapp.js";
 import { linkedinSender } from "../prospect/senders/linkedin.js";
+import { checkSendSuppression } from "../prospect/suppression.js";
 import { requireTenantById } from "../core/tenants.js";
 import type { ProspectSendJob, ProspectTickJob } from "./queues.js";
+
+// Retry de falha transitória: volta pra 'pending' com backoff; o dispatcher
+// re-enfileira respeitando o orçamento do tenant. Após MAX, falha terminal.
+const MAX_SEND_ATTEMPTS = 3;
+const RETRY_BACKOFF_MS = 15 * 60 * 1000;
 
 const sendWorker = new Worker<ProspectSendJob>(
   "prospect-send",
@@ -30,12 +36,22 @@ const sendWorker = new Worker<ProspectSendJob>(
       logger.warn({ campaignId, prospectId }, "prospect-send: campaign or prospect missing");
       return;
     }
-    if (prospect.status === "sent" || prospect.status === "replied" || prospect.status === "ready_for_manual") {
+    if (prospect.status === "sent" || prospect.status === "replied" || prospect.status === "ready_for_manual" || prospect.status === "opted_out") {
       logger.debug({ prospectId }, "prospect-send: already handled, skip");
       return;
     }
 
     const tenant = await requireTenantById(campaign.tenant_id);
+
+    // Defesa em profundidade: o estado pode ter mudado entre o import e o envio
+    // (opt-out, virou lead, fechou negócio). Re-checa antes de gastar mensagem.
+    const suppression = await checkSendSuppression(tenant.id, prospect.external_id, campaign.channel);
+    if (suppression) {
+      await updateProspect(prospect.id, { status: "skipped", skip_reason: suppression });
+      await logProspectEvent(prospect.id, "skipped", { reason: suppression });
+      logger.info({ tenant: tenant.slug, prospectId, reason: suppression }, "prospect suprimido no envio");
+      return;
+    }
 
     const text = await composeMessage(campaign, prospect);
     await updateProspect(prospect.id, { composed_message: text });
@@ -60,11 +76,25 @@ const sendWorker = new Worker<ProspectSendJob>(
         await logProspectEvent(prospect.id, "skipped", { reason: result.reason });
         logger.info({ tenant: tenant.slug, prospectId, reason: result.reason }, "prospect skipped");
         return;
-      case "failed":
-        await updateProspect(prospect.id, { status: "failed", error_msg: result.error });
-        await logProspectEvent(prospect.id, "failed", { error: result.error });
-        logger.warn({ tenant: tenant.slug, prospectId, error: result.error }, "prospect failed");
+      case "failed": {
+        const attempts = prospect.attempts + 1;
+        if (attempts < MAX_SEND_ATTEMPTS) {
+          const nextAt = new Date(Date.now() + attempts * RETRY_BACKOFF_MS);
+          await updateProspect(prospect.id, {
+            status: "pending",
+            attempts,
+            next_attempt_at: nextAt,
+            error_msg: result.error,
+          });
+          await logProspectEvent(prospect.id, "retry_scheduled", { attempts, nextAt, error: result.error });
+          logger.warn({ tenant: tenant.slug, prospectId, attempts, error: result.error }, "prospect failed, retry agendado");
+        } else {
+          await updateProspect(prospect.id, { status: "failed", attempts, error_msg: result.error });
+          await logProspectEvent(prospect.id, "failed", { attempts, error: result.error });
+          logger.warn({ tenant: tenant.slug, prospectId, attempts, error: result.error }, "prospect failed (terminal)");
+        }
         return;
+      }
     }
   },
   { ...bullConnection, concurrency: 1 },

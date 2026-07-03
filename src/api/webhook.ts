@@ -56,9 +56,14 @@ export async function registerRoutes(app: FastifyInstance) {
 
     // Se essa primeira resposta vem de um prospect (cold outreach), faz o handoff:
     // vincula o prospect a um lead, copia nome/empresa, marca source='campaign:N'.
-    await handleProspectReply(tenant, parsed.waId, parsed.pushName ?? null).catch((err) =>
-      logger.warn({ err, tenant: tenant.slug, waId: parsed.waId }, "prospect handoff failed (continuing as normal lead)"),
-    );
+    // Opt-out ("pare", "não me mande mais"): blacklista, confirma e NÃO aciona a IA.
+    const handoff = await handleProspectReply(tenant, parsed.waId, parsed.pushName ?? null, text).catch((err) => {
+      logger.warn({ err, tenant: tenant.slug, waId: parsed.waId }, "prospect handoff failed (continuing as normal lead)");
+      return { matched: false as const };
+    });
+    if (handoff.matched && "optedOut" in handoff && handoff.optedOut) {
+      return reply.send({ ok: true, optedOut: true });
+    }
 
     const lead = await upsertLead(tenant.id, parsed.waId, { nome: parsed.pushName ?? null });
     await logMessage(lead.id, "in", "user", text);

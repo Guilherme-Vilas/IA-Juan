@@ -17,6 +17,15 @@ import {
   type Channel,
 } from "../prospect/repo.js";
 import { pauseCampaign, startCampaign } from "../prospect/dispatcher.js";
+import {
+  addToBlacklist,
+  filterBlacklisted,
+  filterRecentlyProspected,
+  filterSuppressedLeads,
+  listBlacklist,
+  removeFromBlacklist,
+} from "../prospect/suppression.js";
+import { normalizeBrazilPhone } from "../prospect/csv.js";
 
 function isChannel(x: unknown): x is Channel {
   return x === "whatsapp" || x === "linkedin";
@@ -99,12 +108,59 @@ export async function registerProspectRoutes(app: FastifyInstance) {
       if (!body?.csv) return reply.code(400).send({ error: "csv required" });
 
       const parsed = parseProspectsCsv(body.csv, campaign.channel);
-      const { inserted, duplicates } = await insertProspects(req.tenantId!, campaignId, parsed.prospects);
+
+      // Camadas de supressão no import: blacklist (opt-out/LGPD), já prospectado
+      // em outra campanha (janela de 90d) e lead do funil em situação proibida.
+      const ids = parsed.prospects.map((p) => p.external_id);
+      const [blacklisted, recent, suppressedLeads] = await Promise.all([
+        filterBlacklisted(req.tenantId!, ids),
+        filterRecentlyProspected(req.tenantId!, ids, campaignId),
+        campaign.channel === "whatsapp"
+          ? filterSuppressedLeads(req.tenantId!, ids)
+          : Promise.resolve(new Set<string>()),
+      ]);
+
+      const clean = parsed.prospects.filter(
+        (p) => !blacklisted.has(p.external_id) && !recent.has(p.external_id) && !suppressedLeads.has(p.external_id),
+      );
+      const suppressed = {
+        blacklisted: blacklisted.size,
+        ja_prospectado: parsed.prospects.filter((p) => !blacklisted.has(p.external_id) && recent.has(p.external_id)).length,
+        lead_existente: parsed.prospects.filter(
+          (p) => !blacklisted.has(p.external_id) && !recent.has(p.external_id) && suppressedLeads.has(p.external_id),
+        ).length,
+      };
+
+      const { inserted, duplicates } = await insertProspects(req.tenantId!, campaignId, clean);
       logger.info(
-        { tenant: req.tenantSlug, campaignId, inserted, duplicates, invalid: parsed.invalid.length },
+        { tenant: req.tenantSlug, campaignId, inserted, duplicates, invalid: parsed.invalid.length, suppressed },
         "admin: prospects uploaded",
       );
-      return reply.send({ inserted, duplicates, invalid: parsed.invalid, headers: parsed.headers });
+      return reply.send({ inserted, duplicates, invalid: parsed.invalid, suppressed, headers: parsed.headers });
+    });
+
+    // ===== Blacklist (opt-outs LGPD + bloqueios manuais) =====
+    scope.get("/admin/tenants/:slug/blacklist", async (req) => {
+      return { blacklist: await listBlacklist(req.tenantId!) };
+    });
+
+    scope.post("/admin/tenants/:slug/blacklist", async (req, reply) => {
+      const body = req.body as { external_id?: string; reason?: string };
+      const raw = body?.external_id?.trim();
+      if (!raw) return reply.code(400).send({ error: "external_id required" });
+      // telefone entra em qualquer formato; slug LinkedIn passa direto.
+      const externalId = normalizeBrazilPhone(raw) ?? raw;
+      const reason = body.reason === "bounced" ? "bounced" : "manual";
+      await addToBlacklist(req.tenantId!, externalId, reason, "manual");
+      logger.info({ tenant: req.tenantSlug, externalId, reason }, "admin: blacklist add");
+      return reply.send({ ok: true, external_id: externalId });
+    });
+
+    scope.delete("/admin/tenants/:slug/blacklist/:externalId", async (req, reply) => {
+      const { externalId } = req.params as { externalId: string };
+      await removeFromBlacklist(req.tenantId!, externalId);
+      logger.info({ tenant: req.tenantSlug, externalId }, "admin: blacklist remove");
+      return reply.send({ ok: true });
     });
 
     scope.post("/admin/tenants/:slug/campaigns/:id/preview", async (req, reply) => {

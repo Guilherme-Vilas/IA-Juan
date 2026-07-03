@@ -330,7 +330,8 @@ export type ProspectStatus =
   | "replied"
   | "failed"
   | "skipped"
-  | "ready_for_manual";
+  | "ready_for_manual"
+  | "opted_out";
 
 export type Campaign = {
   id: number;
@@ -374,6 +375,7 @@ export type CampaignMetrics = {
   failed: number;
   skipped: number;
   ready_for_manual: number;
+  opted_out: number;
 };
 
 export const CAMPAIGN_STATUS_LABELS: Record<CampaignStatus, string> = {
@@ -398,14 +400,17 @@ export const PROSPECT_STATUS_LABELS: Record<ProspectStatus, string> = {
   failed: "Falhou",
   skipped: "Pulado",
   ready_for_manual: "Envio manual",
+  opted_out: "Opt-out",
 };
 
+// cores dark-theme (alinhadas à paleta Vita OS)
 export const PROSPECT_STATUS_COLORS: Record<ProspectStatus, string> = {
-  pending: "bg-slate-100 text-slate-700",
-  queued: "bg-indigo-100 text-indigo-700",
-  sent: "bg-blue-100 text-blue-700",
-  replied: "bg-emerald-100 text-emerald-700",
-  failed: "bg-red-100 text-red-700",
-  skipped: "bg-amber-100 text-amber-700",
-  ready_for_manual: "bg-violet-100 text-violet-700",
+  pending: "bg-canvas-surface-2 text-ink-soft",
+  queued: "bg-info/10 text-info",
+  sent: "bg-info/15 text-info",
+  replied: "bg-success/15 text-success",
+  failed: "bg-danger/15 text-danger",
+  skipped: "bg-warning/15 text-warning",
+  ready_for_manual: "bg-accent-bronze/15 text-accent-bronze-soft",
+  opted_out: "bg-danger/10 text-danger",
 };

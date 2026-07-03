@@ -21,6 +21,9 @@ export type TenantRow = {
   // Captura externa de leads.
   ingest_token: string | null;
   capture_greeting: string;
+  // Prospecção: teto diário da instância (todas as campanhas) + início do warm-up do chip.
+  prospect_daily_cap: number;
+  prospect_warmup_started_at: Date | null;
   created_at: Date;
   updated_at: Date;
 };

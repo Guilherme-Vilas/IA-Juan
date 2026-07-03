@@ -1,18 +1,13 @@
 import { checkWhatsappNumbers, sendText } from "../../core/evolution.js";
-import { getLead } from "../../core/db.js";
 import { logger } from "../../core/logger.js";
 import type { TenantRow } from "../../core/tenants.js";
 import type { Sender, SendResult } from "./index.js";
 
+// Supressão (blacklist, lead do funil, opt-out) roda ANTES, no worker,
+// via checkSendSuppression — aqui só valida o número e envia.
 export const whatsappSender: Sender = {
   async send(_campaign, prospect, text, tenant): Promise<SendResult> {
     const waId = prospect.external_id;
-
-    // anti-duplicação: se já é lead ativo no funil DESSE tenant, não manda outreach por cima
-    const existing = await getLead(tenant.id, waId);
-    if (existing && existing.status === "open") {
-      return { status: "skipped", reason: "já é lead ativo (open)" };
-    }
 
     const checks = await checkWhatsappNumbers(tenant, [waId]);
     if (!checks.get(waId)) {

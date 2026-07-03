@@ -9,7 +9,8 @@ export type ProspectStatus =
   | "replied"
   | "failed"
   | "skipped"
-  | "ready_for_manual";
+  | "ready_for_manual"
+  | "opted_out";
 
 export type CampaignRow = {
   id: number;
@@ -42,6 +43,8 @@ export type ProspectRow = {
   replied_at: Date | null;
   lead_id: number | null;
   error_msg: string | null;
+  attempts: number;
+  next_attempt_at: Date | null;
   created_at: Date;
   updated_at: Date;
 };
@@ -214,7 +217,7 @@ export async function findProspectByExternalId(
 
 export async function updateProspect(
   id: number,
-  patch: Partial<Pick<ProspectRow, "composed_message" | "status" | "skip_reason" | "sent_at" | "replied_at" | "lead_id" | "error_msg">>,
+  patch: Partial<Pick<ProspectRow, "composed_message" | "status" | "skip_reason" | "sent_at" | "replied_at" | "lead_id" | "error_msg" | "attempts" | "next_attempt_at">>,
 ): Promise<void> {
   const fields: string[] = [];
   const values: unknown[] = [];
@@ -251,6 +254,7 @@ export type CampaignMetrics = {
   failed: number;
   skipped: number;
   ready_for_manual: number;
+  opted_out: number;
 };
 
 export async function getCampaignMetrics(campaignId: number): Promise<CampaignMetrics> {
@@ -267,6 +271,7 @@ export async function getCampaignMetrics(campaignId: number): Promise<CampaignMe
     failed: 0,
     skipped: 0,
     ready_for_manual: 0,
+    opted_out: 0,
   };
   for (const r of rows) {
     const n = Number(r.n);
@@ -294,9 +299,25 @@ export async function pickNextPendingBatch(
   const { rows } = await pool.query<ProspectRow>(
     `SELECT * FROM prospects
        WHERE campaign_id = $1 AND status = 'pending'
+         AND (next_attempt_at IS NULL OR next_attempt_at <= now())
        ORDER BY id ASC
        LIMIT $2`,
     [campaignId, limit],
   );
   return rows;
+}
+
+// Orçamento consumido pelo TENANT (todas as campanhas): enviados nas últimas
+// 24h + tudo que está na fila agora (vai sair em breve, conta contra o teto).
+export async function countTenantBudgetUsed(tenantId: number): Promise<number> {
+  const { rows } = await pool.query<{ n: string }>(
+    `SELECT COUNT(*)::text AS n FROM prospects
+       WHERE tenant_id = $1
+         AND (
+           (status IN ('sent','ready_for_manual') AND sent_at >= now() - interval '24 hours')
+           OR status = 'queued'
+         )`,
+    [tenantId],
+  );
+  return Number(rows[0]?.n ?? "0");
 }
