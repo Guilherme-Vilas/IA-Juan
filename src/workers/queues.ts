@@ -67,8 +67,10 @@ export function followupJobId(tenantId: number, waId: string, stage: 1 | 2 | 3):
   return `followup-${tenantId}-${stage}-${waId}`;
 }
 
-export function prospectSendJobId(prospectId: number): string {
-  return `prospect-send-${prospectId}`;
+// jobId por prospect+passo: o mesmo prospect volta pra fila a cada passo da
+// cadência — o id precisa ser único por toque, mas idempotente dentro do passo.
+export function prospectSendJobId(prospectId: number, step: number): string {
+  return `prospect-send-${prospectId}-s${step}`;
 }
 
 export function retryTurnJobId(tenantId: number, waId: string, attempt: number): string {

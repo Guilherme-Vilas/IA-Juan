@@ -149,7 +149,7 @@ export async function tickCampaign(
   for (const p of batch) {
     const jitter = randomJitterMs();
     const delayMs = Math.max(0, jitter);
-    const jobId = prospectSendJobId(p.id);
+    const jobId = prospectSendJobId(p.id, p.current_step + 1);
     try {
       await prospectSendQueue.add(
         "send",

@@ -2,7 +2,7 @@ import { notFound } from "next/navigation";
 import { Header } from "@/components/layout/header";
 import { campaignApi } from "@/lib/api";
 import { getCurrentTenant } from "@/lib/tenant";
-import type { Campaign, CampaignMetrics, Prospect } from "@/lib/types";
+import type { Campaign, CampaignFunnel, CampaignMetrics, CampaignStep, Prospect } from "@/lib/types";
 import { CampaignDetail } from "./_components/campaign-detail";
 
 export const dynamic = "force-dynamic";
@@ -11,6 +11,8 @@ type DetailResponse = {
   campaign: Campaign;
   metrics: CampaignMetrics;
   prospects: Prospect[];
+  steps?: CampaignStep[];
+  funnel?: CampaignFunnel;
 };
 
 export default async function CampaignDetailPage({ params }: { params: { id: string } }) {
@@ -35,6 +37,8 @@ export default async function CampaignDetailPage({ params }: { params: { id: str
           campaign={data!.campaign}
           metrics={data!.metrics}
           prospects={data!.prospects}
+          steps={data!.steps ?? []}
+          funnel={data!.funnel ?? null}
         />
       </div>
     </>

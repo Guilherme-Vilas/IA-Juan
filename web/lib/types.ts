@@ -378,6 +378,47 @@ export type CampaignMetrics = {
   opted_out: number;
 };
 
+// ===== Cadência multi-etapa + A/B (Fase 2) =====
+
+export type CampaignStepVariant = {
+  id: number;
+  step_id: number;
+  label: string;
+  template_text: string;
+  active: boolean;
+};
+
+export type CampaignStep = {
+  id: number;
+  campaign_id: number;
+  position: number;
+  wait_hours: number;
+  template_text: string;
+  variants: CampaignStepVariant[];
+};
+
+export type FunnelCell = {
+  step_id: number | null;
+  position: number | null;
+  variant_id: number | null;
+  variant_label: string;
+  sends: number;
+  replies: number;
+};
+
+export type CampaignFunnel = {
+  cells: FunnelCell[];
+  totals: {
+    sends: number;
+    replies: number;
+    positivos: number;
+    leads: number;
+    agendados: number;
+    ganhos: number;
+    valor_ganho_cents: number;
+  };
+};
+
 export const CAMPAIGN_STATUS_LABELS: Record<CampaignStatus, string> = {
   draft: "Rascunho",
   running: "Rodando",

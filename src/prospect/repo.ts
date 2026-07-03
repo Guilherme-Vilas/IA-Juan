@@ -45,6 +45,11 @@ export type ProspectRow = {
   error_msg: string | null;
   attempts: number;
   next_attempt_at: Date | null;
+  // Cadência: último passo enviado (0 = nenhum) + quando fica elegível pro próximo.
+  current_step: number;
+  next_step_at: Date | null;
+  // Classe da primeira resposta (IA): interessado | nao_interessado | depois | opt_out | neutro.
+  reply_class: string | null;
   created_at: Date;
   updated_at: Date;
 };
@@ -200,6 +205,8 @@ export async function getProspect(id: number): Promise<ProspectRow | null> {
 }
 
 // Busca prospect ativo POR tenant+external — pra handoff de resposta.
+// Inclui 'pending' no meio da cadência (current_step > 0): a pessoa pode
+// responder entre um passo e outro — isso é reply e cancela os próximos passos.
 export async function findProspectByExternalId(
   tenantId: number,
   externalId: string,
@@ -207,7 +214,8 @@ export async function findProspectByExternalId(
   const { rows } = await pool.query<ProspectRow>(
     `SELECT * FROM prospects
        WHERE tenant_id = $1 AND external_id = $2
-         AND status IN ('sent','ready_for_manual','queued')
+         AND (status IN ('sent','ready_for_manual','queued')
+              OR (status = 'pending' AND current_step > 0))
        ORDER BY sent_at DESC NULLS LAST
        LIMIT 1`,
     [tenantId, externalId],
@@ -217,7 +225,7 @@ export async function findProspectByExternalId(
 
 export async function updateProspect(
   id: number,
-  patch: Partial<Pick<ProspectRow, "composed_message" | "status" | "skip_reason" | "sent_at" | "replied_at" | "lead_id" | "error_msg" | "attempts" | "next_attempt_at">>,
+  patch: Partial<Pick<ProspectRow, "composed_message" | "status" | "skip_reason" | "sent_at" | "replied_at" | "lead_id" | "error_msg" | "attempts" | "next_attempt_at" | "current_step" | "next_step_at" | "reply_class">>,
 ): Promise<void> {
   const fields: string[] = [];
   const values: unknown[] = [];
@@ -281,17 +289,19 @@ export async function getCampaignMetrics(campaignId: number): Promise<CampaignMe
   return m;
 }
 
+// Mensagens que saíram nas últimas 24h — do log de envios (cada passo da
+// cadência conta 1 contra o rate da campanha).
 export async function countSentToday(campaignId: number): Promise<number> {
   const { rows } = await pool.query<{ n: string }>(
-    `SELECT COUNT(*)::text AS n FROM prospects
-       WHERE campaign_id = $1
-         AND status IN ('sent','ready_for_manual')
-         AND sent_at >= now() - interval '24 hours'`,
+    `SELECT COUNT(*)::text AS n FROM prospect_sends
+       WHERE campaign_id = $1 AND sent_at >= now() - interval '24 hours'`,
     [campaignId],
   );
   return Number(rows[0]?.n ?? "0");
 }
 
+// Elegível pro próximo toque: sem retry agendado no futuro E sem espera de
+// cadência pendente (next_step_at).
 export async function pickNextPendingBatch(
   campaignId: number,
   limit: number,
@@ -300,6 +310,7 @@ export async function pickNextPendingBatch(
     `SELECT * FROM prospects
        WHERE campaign_id = $1 AND status = 'pending'
          AND (next_attempt_at IS NULL OR next_attempt_at <= now())
+         AND (next_step_at IS NULL OR next_step_at <= now())
        ORDER BY id ASC
        LIMIT $2`,
     [campaignId, limit],
@@ -307,16 +318,13 @@ export async function pickNextPendingBatch(
   return rows;
 }
 
-// Orçamento consumido pelo TENANT (todas as campanhas): enviados nas últimas
-// 24h + tudo que está na fila agora (vai sair em breve, conta contra o teto).
+// Orçamento consumido pelo TENANT (todas as campanhas): mensagens enviadas nas
+// últimas 24h (log de envios) + tudo que está na fila agora (vai sair em breve).
 export async function countTenantBudgetUsed(tenantId: number): Promise<number> {
   const { rows } = await pool.query<{ n: string }>(
-    `SELECT COUNT(*)::text AS n FROM prospects
-       WHERE tenant_id = $1
-         AND (
-           (status IN ('sent','ready_for_manual') AND sent_at >= now() - interval '24 hours')
-           OR status = 'queued'
-         )`,
+    `SELECT
+       (SELECT COUNT(*) FROM prospect_sends WHERE tenant_id = $1 AND sent_at >= now() - interval '24 hours')
+       + (SELECT COUNT(*) FROM prospects WHERE tenant_id = $1 AND status = 'queued') AS n`,
     [tenantId],
   );
   return Number(rows[0]?.n ?? "0");

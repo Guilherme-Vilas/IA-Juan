@@ -1,7 +1,8 @@
 import type { FastifyInstance } from "fastify";
 import { logger } from "../core/logger.js";
 import { parseProspectsCsv } from "../prospect/csv.js";
-import { composeMessage } from "../prospect/compose.js";
+import { composeWithTemplate } from "../prospect/compose.js";
+import { getCampaignFunnel, listSteps, replaceSteps, type StepInput } from "../prospect/steps.js";
 import {
   createCampaign,
   deleteCampaign,
@@ -65,6 +66,8 @@ export async function registerProspectRoutes(app: FastifyInstance) {
         rate_per_day: body.rate_per_day ?? 30,
         work_hours_only: body.work_hours_only ?? true,
       });
+      // Toda campanha nasce com cadência: o template vira o passo 1.
+      await replaceSteps(c.id, [{ wait_hours: 0, template_text: body.template_text }]);
       logger.info({ tenant: req.tenantSlug, campaignId: c.id }, "admin: campaign created");
       return reply.send({ campaign: c });
     });
@@ -73,11 +76,44 @@ export async function registerProspectRoutes(app: FastifyInstance) {
       const campaignId = Number((req.params as { id: string }).id);
       const c = await getCampaign(req.tenantId!, campaignId);
       if (!c) return reply.code(404).send({ error: "not found" });
-      const [metrics, prospects] = await Promise.all([
+      const [metrics, prospects, steps, funnel] = await Promise.all([
         getCampaignMetrics(campaignId),
         listProspects(campaignId, { limit: 500 }),
+        listSteps(campaignId),
+        getCampaignFunnel(campaignId),
       ]);
-      return { campaign: c, metrics, prospects };
+      return { campaign: c, metrics, prospects, steps, funnel };
+    });
+
+    // Substitui a cadência inteira (passos + variantes). POST em vez de PUT
+    // porque o admin-proxy do dashboard só encaminha GET/POST/PATCH/DELETE.
+    scope.post("/admin/tenants/:slug/campaigns/:id/steps", async (req, reply) => {
+      const campaignId = Number((req.params as { id: string }).id);
+      const c = await getCampaign(req.tenantId!, campaignId);
+      if (!c) return reply.code(404).send({ error: "campaign not found" });
+      const body = req.body as { steps?: Array<{ wait_hours?: number; template_text?: string; variants?: Array<{ label?: string; template_text?: string; active?: boolean }> }> };
+      if (!Array.isArray(body?.steps) || body.steps.length === 0) {
+        return reply.code(400).send({ error: "steps deve ser uma lista com pelo menos 1 passo" });
+      }
+      if (body.steps.length > 10) return reply.code(400).send({ error: "máximo de 10 passos" });
+
+      const steps: StepInput[] = [];
+      for (const [i, s] of body.steps.entries()) {
+        if (!s?.template_text?.trim()) {
+          return reply.code(400).send({ error: `passo ${i + 1}: template_text obrigatório` });
+        }
+        const variants = (s.variants ?? [])
+          .filter((v) => v?.template_text?.trim() && v?.label?.trim())
+          .map((v) => ({ label: v.label!.trim().toUpperCase(), template_text: v.template_text!, active: v.active ?? true }));
+        steps.push({
+          wait_hours: Math.max(0, Math.min(24 * 30, Number(s.wait_hours ?? 48))),
+          template_text: s.template_text,
+          variants,
+        });
+      }
+      const saved = await replaceSteps(campaignId, steps);
+      logger.info({ tenant: req.tenantSlug, campaignId, steps: saved.length }, "admin: cadência atualizada");
+      return reply.send({ steps: saved });
     });
 
     scope.patch("/admin/tenants/:slug/campaigns/:id", async (req, reply) => {
@@ -167,13 +203,16 @@ export async function registerProspectRoutes(app: FastifyInstance) {
       const campaignId = Number((req.params as { id: string }).id);
       const campaign = await getCampaign(req.tenantId!, campaignId);
       if (!campaign) return reply.code(404).send({ error: "campaign not found" });
-      const body = req.body as { limit?: number };
+      const body = req.body as { limit?: number; step?: number };
       const limit = Math.min(Math.max(1, body?.limit ?? 3), 5);
+      const steps = await listSteps(campaignId);
+      const step = steps.find((s) => s.position === (body?.step ?? 1));
+      const template = step?.template_text ?? campaign.template_text;
       const prospects = await listProspects(campaignId, { status: "pending", limit });
       const previews = await Promise.all(
         prospects.map(async (p) => ({
           prospect: { id: p.id, nome: p.nome, empresa: p.empresa, external_id: p.external_id },
-          message: await composeMessage(campaign, p),
+          message: await composeWithTemplate(campaign, p, template),
         })),
       );
       return reply.send({ previews });

@@ -2,7 +2,8 @@ import { Worker } from "bullmq";
 import { bullConnection } from "../core/redis.js";
 import { logger } from "../core/logger.js";
 import { config } from "../config.js";
-import { composeMessage } from "../prospect/compose.js";
+import { composeWithTemplate } from "../prospect/compose.js";
+import { listSteps, pickVariant, recordSend } from "../prospect/steps.js";
 import { tickAllCampaigns } from "../prospect/dispatcher.js";
 import { scanSlaBreaches } from "../core/sla.js";
 import { scanTaskReminders } from "../core/tasks.js";
@@ -36,8 +37,11 @@ const sendWorker = new Worker<ProspectSendJob>(
       logger.warn({ campaignId, prospectId }, "prospect-send: campaign or prospect missing");
       return;
     }
-    if (prospect.status === "sent" || prospect.status === "replied" || prospect.status === "ready_for_manual" || prospect.status === "opted_out") {
-      logger.debug({ prospectId }, "prospect-send: already handled, skip");
+    // Stop-on-reply e idempotência: só processa quem está de fato na fila.
+    // Resposta do lead muda o status pra 'replied'/'opted_out' e este guard
+    // cancela qualquer passo pendente da cadência.
+    if (prospect.status !== "queued") {
+      logger.debug({ prospectId, status: prospect.status }, "prospect-send: not queued, skip");
       return;
     }
 
@@ -53,21 +57,70 @@ const sendWorker = new Worker<ProspectSendJob>(
       return;
     }
 
-    const text = await composeMessage(campaign, prospect);
+    // Cadência: o passo deste toque é current_step+1. Campanha sem passos
+    // (não deveria existir pós-migration) cai no template legado da campanha.
+    const steps = await listSteps(campaign.id);
+    const stepNumber = prospect.current_step + 1;
+    const step = steps.find((s) => s.position === stepNumber) ?? null;
+    const nextStep = steps.find((s) => s.position === stepNumber + 1) ?? null;
+    const chosen = step
+      ? pickVariant(step)
+      : { variantId: null, label: "A", template: campaign.template_text };
+
+    const text = await composeWithTemplate(campaign, prospect, chosen.template);
     await updateProspect(prospect.id, { composed_message: text });
-    await logProspectEvent(prospect.id, "composed", { chars: text.length });
+    await logProspectEvent(prospect.id, "composed", { chars: text.length, step: stepNumber, variant: chosen.label });
 
     const sender = campaign.channel === "whatsapp" ? whatsappSender : linkedinSender;
     const result = await sender.send(campaign, prospect, text, tenant);
 
     switch (result.status) {
-      case "sent":
-        await updateProspect(prospect.id, { status: "sent", sent_at: new Date() });
-        await logProspectEvent(prospect.id, "sent");
-        logger.info({ tenant: tenant.slug, prospectId, campaignId }, "prospect sent");
+      case "sent": {
+        await recordSend({
+          tenantId: tenant.id,
+          campaignId: campaign.id,
+          prospectId: prospect.id,
+          stepId: step?.id ?? null,
+          variantId: chosen.variantId,
+          messageText: text,
+        });
+        if (nextStep) {
+          // Volta pra 'pending' aguardando o próximo passo — dispatcher re-pega
+          // quando next_step_at vencer. Reply no meio-tempo cancela (status muda).
+          const nextAt = new Date(Date.now() + nextStep.wait_hours * 3_600_000);
+          await updateProspect(prospect.id, {
+            status: "pending",
+            current_step: stepNumber,
+            sent_at: new Date(),
+            next_step_at: nextAt,
+            attempts: 0,
+            next_attempt_at: null,
+          });
+          await logProspectEvent(prospect.id, "step_sent", { step: stepNumber, variant: chosen.label, nextStepAt: nextAt });
+          logger.info({ tenant: tenant.slug, prospectId, campaignId, step: stepNumber, nextAt }, "prospect step sent, próximo agendado");
+        } else {
+          await updateProspect(prospect.id, {
+            status: "sent",
+            current_step: stepNumber,
+            sent_at: new Date(),
+            next_step_at: null,
+          });
+          await logProspectEvent(prospect.id, "sent", { step: stepNumber, variant: chosen.label });
+          logger.info({ tenant: tenant.slug, prospectId, campaignId, step: stepNumber }, "prospect sent (cadência completa)");
+        }
         return;
+      }
       case "ready_for_manual":
-        await updateProspect(prospect.id, { status: "ready_for_manual", sent_at: new Date() });
+        // LinkedIn manual: single-touch — registra o envio e não avança cadência.
+        await recordSend({
+          tenantId: tenant.id,
+          campaignId: campaign.id,
+          prospectId: prospect.id,
+          stepId: step?.id ?? null,
+          variantId: chosen.variantId,
+          messageText: text,
+        });
+        await updateProspect(prospect.id, { status: "ready_for_manual", current_step: stepNumber, sent_at: new Date() });
         await logProspectEvent(prospect.id, "ready_for_manual", { deepLink: result.deepLink });
         logger.info({ tenant: tenant.slug, prospectId, campaignId, deepLink: result.deepLink }, "prospect ready for manual");
         return;

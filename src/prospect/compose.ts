@@ -68,7 +68,17 @@ Regras OBRIGATÓRIAS:
 }
 
 export async function composeMessage(campaign: CampaignRow, prospect: ProspectRow): Promise<string> {
-  const base = interpolate(campaign.template_text, prospect);
+  return composeWithTemplate(campaign, prospect, campaign.template_text);
+}
+
+// Compose com template arbitrário — usado pela cadência (cada passo/variante
+// tem seu próprio template; tone/ai_refine continuam sendo da campanha).
+export async function composeWithTemplate(
+  campaign: CampaignRow,
+  prospect: ProspectRow,
+  templateText: string,
+): Promise<string> {
+  const base = interpolate(templateText, prospect);
   if (!campaign.ai_refine) return base;
   return await refineWithAi(base, campaign, prospect);
 }

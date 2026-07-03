@@ -11,9 +11,13 @@ import {
   PROSPECT_STATUS_COLORS,
   PROSPECT_STATUS_LABELS,
   type Campaign,
+  type CampaignFunnel,
   type CampaignMetrics,
+  type CampaignStep,
   type Prospect,
 } from "@/lib/types";
+import { CadenceEditor } from "./cadence-editor";
+import { FunnelCard } from "./funnel-card";
 import { Copy, ExternalLink, Pause, Play, Upload, Eye } from "lucide-react";
 
 const CSV_PLACEHOLDER_WA = `nome,telefone,empresa,cargo
@@ -31,11 +35,15 @@ export function CampaignDetail({
   campaign,
   metrics,
   prospects,
+  steps = [],
+  funnel,
 }: {
   tenantSlug: string;
   campaign: Campaign;
   metrics: CampaignMetrics;
   prospects: Prospect[];
+  steps?: CampaignStep[];
+  funnel?: CampaignFunnel | null;
 }) {
   const router = useRouter();
   const [csv, setCsv] = useState("");
@@ -172,25 +180,17 @@ export function CampaignDetail({
           </CardBody>
         </Card>
 
-        <Card>
-          <CardHeader>
-            <h2 className="text-sm font-semibold">Template</h2>
-          </CardHeader>
-          <CardBody>
-            <pre className="whitespace-pre-wrap rounded bg-canvas-surface p-2 font-mono text-xs">
-              {campaign.template_text}
-            </pre>
-            <p className="mt-2 text-xs text-ink-muted">
-              {campaign.ai_refine ? "IA refina cada msg · " : ""}
-              Tom: {campaign.tone} ·{" "}
-              {campaign.work_hours_only ? "Só horário comercial" : "24/7"}
-            </p>
-          </CardBody>
-        </Card>
+        {funnel && <FunnelCard funnel={funnel} />}
+
+        <p className="px-1 text-[11px] text-ink-faint">
+          {campaign.ai_refine ? "IA refina cada msg · " : ""}
+          Tom: {campaign.tone} · {campaign.work_hours_only ? "Só horário comercial" : "24/7"}
+        </p>
       </div>
 
-      {/* Coluna direita: upload + preview + prospects */}
+      {/* Coluna direita: cadência + upload + preview + prospects */}
       <div className="space-y-4 lg:col-span-2">
+        <CadenceEditor tenantSlug={tenantSlug} campaignId={campaign.id} initial={steps} />
         <Card>
           <CardHeader>
             <h2 className="text-sm font-semibold">Importar leads (CSV)</h2>
