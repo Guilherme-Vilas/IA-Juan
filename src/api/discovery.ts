@@ -98,6 +98,22 @@ export async function registerDiscoveryRoutes(app: FastifyInstance) {
       return { search, leads };
     });
 
+    // Re-roda uma busca que falhou (ex.: fonte fora do ar / credencial nova).
+    scope.post("/admin/tenants/:slug/discovery/:id/retry", async (req, reply) => {
+      const id = Number((req.params as { id: string }).id);
+      const search = await getSearchForTenant(req.tenantId!, id);
+      if (!search) return reply.code(404).send({ error: "not found" });
+      if (search.status !== "failed") return reply.code(409).send({ error: "só buscas com falha podem ser re-executadas" });
+      await updateSearch(id, { status: "queued", error_msg: null });
+      await discoveryQueue
+        .add("run", { searchId: id }, { jobId: discoveryJobId(id), removeOnComplete: true, removeOnFail: 20 })
+        .catch(async (err) => {
+          if (!String(err?.message ?? "").includes("already exists")) throw err;
+        });
+      logger.info({ tenant: req.tenantSlug, searchId: id }, "discovery: retry");
+      return reply.send({ ok: true });
+    });
+
     scope.delete("/admin/tenants/:slug/discovery/:id", async (req, reply) => {
       const id = Number((req.params as { id: string }).id);
       const search = await getSearchForTenant(req.tenantId!, id);

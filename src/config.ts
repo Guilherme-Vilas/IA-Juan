@@ -87,11 +87,18 @@ const schema = z.object({
   PROSPECT_JITTER_MS: z.coerce.number().default(10 * 60 * 1000),
   PROSPECT_DEFAULT_RATE_PER_DAY: z.coerce.number().default(30),
 
-  // Busca de leads (discovery) — fontes públicas de CNPJ.
-  // Casa dos Dados: busca filtrada (CNAE/UF/capital). minhareceita: detalhe
-  // por CNPJ (telefones, sócios, email). Ambas configuráveis pra troca de fonte.
+  // Busca de leads (discovery) — fontes de CNPJ.
+  // Casa dos Dados: busca filtrada (CNAE/UF/capital). O endpoint público foi
+  // bloqueado por Cloudflare (jul/2026) — a API oficial exige chave (R$0,01/
+  // consulta, portal.casadosdados.com.br). Base/path configuráveis pra seguir
+  // a doc da conta sem mudar código.
   CASADOSDADOS_BASE_URL: z.string().url().default("https://api.casadosdados.com.br"),
+  CASADOSDADOS_SEARCH_PATH: z.string().default("/v2/public/cnpj/search"),
+  CASADOSDADOS_API_KEY: z.string().optional(),
+  // Enriquecimento por CNPJ (telefones/sócios/email) — minhareceita com
+  // fallback OpenCNPJ, ambos gratuitos.
   MINHARECEITA_BASE_URL: z.string().url().default("https://minhareceita.org"),
+  OPENCNPJ_BASE_URL: z.string().url().default("https://api.opencnpj.org"),
   DISCOVERY_MAX_RESULTS: z.coerce.number().default(300),
 });
 

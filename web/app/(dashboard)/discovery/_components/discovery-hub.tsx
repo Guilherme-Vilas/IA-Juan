@@ -12,7 +12,7 @@ import {
   type DiscoverySearch,
 } from "@/lib/types";
 import { formatRelative } from "@/lib/utils";
-import { Radar, Rocket, Trash2, ExternalLink, Phone, MessageCircle, Search } from "lucide-react";
+import { Radar, Rocket, Trash2, ExternalLink, Phone, MessageCircle, Search, RotateCcw } from "lucide-react";
 
 // Presets de ICP — preenchem o formulário com filtros prontos pro nicho.
 const PRESETS: Array<{ label: string; cnae?: string; capitalMin?: string; hint: string }> = [
@@ -115,6 +115,15 @@ export function DiscoveryHub({ tenantSlug }: { tenantSlug: string }) {
   const remove = async (id: number) => {
     try {
       await fetch(`${base}/${id}`, { method: "DELETE" });
+      await load();
+    } catch {
+      /* silencioso */
+    }
+  };
+
+  const retry = async (id: number) => {
+    try {
+      await fetch(`${base}/${id}/retry`, { method: "POST" });
       await load();
     } catch {
       /* silencioso */
@@ -240,6 +249,11 @@ export function DiscoveryHub({ tenantSlug }: { tenantSlug: string }) {
                     {s.exported_campaign_id && (
                       <Button size="sm" variant="outline" onClick={() => router.push(`/prospect/${s.exported_campaign_id}`)}>
                         <ExternalLink size={12} /> Ver campanha
+                      </Button>
+                    )}
+                    {s.status === "failed" && (
+                      <Button size="sm" variant="outline" onClick={() => retry(s.id)} disabled={busy}>
+                        <RotateCcw size={12} /> Tentar de novo
                       </Button>
                     )}
                     {s.status !== "running" && (

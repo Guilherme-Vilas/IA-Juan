@@ -16,7 +16,9 @@
       "Bash(node -e \"console.log\\(require\\('./node_modules/@fastify/jwt/package.json'\\).version\\)\")",
       "Bash(npx tsx *)",
       "Bash(npx tsc *)",
-      "Bash(node -e \"const p=require\\('./package.json'\\); console.log\\('xlsx', p.dependencies.xlsx, '| pdf-parse', p.dependencies['pdf-parse'], '| @types/pdf-parse', \\(p.devDependencies||{}\\)['@types/pdf-parse']\\)\")"
+      "Bash(node -e \"const p=require\\('./package.json'\\); console.log\\('xlsx', p.dependencies.xlsx, '| pdf-parse', p.dependencies['pdf-parse'], '| @types/pdf-parse', \\(p.devDependencies||{}\\)['@types/pdf-parse']\\)\")",
+      "WebFetch(domain:opencnpj.org)",
+      "WebFetch(domain:docs.casadosdados.com.br)"
     ]
   }
 }

@@ -5,6 +5,7 @@ import { checkWhatsappNumbers } from "../core/evolution.js";
 import { normalizeBrazilPhone } from "../prospect/csv.js";
 import { searchCnpj, CNPJ_PAGE_SIZE, type CnpjHit } from "./providers/casadosdados.js";
 import { fetchCnpjDetail } from "./providers/minhareceita.js";
+import { fetchCnpjDetailOpenCnpj } from "./providers/opencnpj.js";
 import {
   getSearch,
   insertDiscoveredLead,
@@ -51,7 +52,10 @@ export async function runDiscovery(searchId: number): Promise<void> {
     let withPhone = 0;
     for (let i = 0; i < hits.length; i += 4) {
       const chunk = hits.slice(i, i + 4);
-      const details = await Promise.all(chunk.map((h) => fetchCnpjDetail(h.cnpj)));
+      // minhareceita primeiro (tem QSA/sócios), OpenCNPJ como fallback.
+      const details = await Promise.all(
+        chunk.map(async (h) => (await fetchCnpjDetail(h.cnpj)) ?? (await fetchCnpjDetailOpenCnpj(h.cnpj))),
+      );
       for (let j = 0; j < chunk.length; j++) {
         const hit = chunk[j]!;
         const d = details[j];
@@ -63,7 +67,8 @@ export async function runDiscovery(searchId: number): Promise<void> {
           tenant_id: search.tenant_id,
           cnpj: hit.cnpj,
           company: hit.nome_fantasia || hit.razao_social || null,
-          contact_name: d?.first_partner ?? null,
+          // sócio: a busca v5 já traz o quadro societário; o enriquecimento cobre o resto
+          contact_name: d?.first_partner ?? hit.first_partner ?? null,
           phone_raw: phoneRaw,
           wa_id: waId,
           email: d?.email ?? null,
