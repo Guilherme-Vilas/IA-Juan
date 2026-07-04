@@ -430,6 +430,23 @@ export const DISCOVERY_STATUS_COLORS: Record<DiscoveryStatus, string> = {
   failed: "bg-danger/15 text-danger",
 };
 
+export type DiscoveredLead = {
+  id: number;
+  search_id: number;
+  cnpj: string;
+  company: string | null;
+  contact_name: string | null;
+  phone_raw: string | null;
+  wa_id: string | null;
+  has_whatsapp: boolean | null;
+  email: string | null;
+  city: string | null;
+  uf: string | null;
+  cnae: string | null;
+  capital_social: number | null;
+  data: Record<string, unknown>;
+};
+
 export type FunnelCell = {
   step_id: number | null;
   position: number | null;

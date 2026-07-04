@@ -18,7 +18,12 @@
       "Bash(npx tsc *)",
       "Bash(node -e \"const p=require\\('./package.json'\\); console.log\\('xlsx', p.dependencies.xlsx, '| pdf-parse', p.dependencies['pdf-parse'], '| @types/pdf-parse', \\(p.devDependencies||{}\\)['@types/pdf-parse']\\)\")",
       "WebFetch(domain:opencnpj.org)",
-      "WebFetch(domain:docs.casadosdados.com.br)"
+      "WebFetch(domain:docs.casadosdados.com.br)",
+      "Bash(git fetch *)",
+      "Read(//Users/guilhermeabiti/.ssh/**)",
+      "Bash(curl -sL https://nodejs.org/dist/v20.18.1/node-v20.18.1-darwin-arm64.tar.gz -o node.tar.gz)",
+      "Bash(tar xzf *)",
+      "Bash(./node-v20.18.1-darwin-arm64/bin/node --version)"
     ]
   }
 }

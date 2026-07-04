@@ -11,18 +11,21 @@ async function proxy(req: Request, params: { path: string[] }) {
   const subPath = params.path.join("/");
   const url = new URL(req.url);
   const target = `${FASTIFY}/admin/${subPath}${url.search}`;
-  const body = req.method !== "GET" && req.method !== "DELETE" ? await req.text() : undefined;
+  // POST/PATCH sem corpo: NÃO mandar Content-Type json com body vazio —
+  // o Fastify responde 400 (FST_ERR_CTP_EMPTY_JSON_BODY) e quebra botões
+  // como start/pause/export/retry. Só encaminha o header quando há corpo.
+  const raw = req.method !== "GET" && req.method !== "DELETE" ? await req.text() : "";
+  const body = raw.length > 0 ? raw : undefined;
 
   const token = cookies().get(SESSION_COOKIE)?.value;
   if (!token) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
 
   try {
+    const headers: Record<string, string> = { Authorization: `Bearer ${token}` };
+    if (body !== undefined) headers["Content-Type"] = "application/json";
     const res = await fetch(target, {
       method: req.method,
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${token}`,
-      },
+      headers,
       body,
       cache: "no-store",
     });
