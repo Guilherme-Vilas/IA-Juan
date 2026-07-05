@@ -1,6 +1,9 @@
 import type { FastifyInstance } from "fastify";
 import { config } from "../config.js";
 import { logger } from "../core/logger.js";
+import { pool } from "../core/db.js";
+import { requireSuperadmin } from "../auth/plugin.js";
+import { getCredits, listTransactions, topup, holdForSearch, releaseHold } from "../core/credits.js";
 import { discoveryQueue, discoveryJobId } from "../workers/queues.js";
 import {
   createSearch,
@@ -53,7 +56,31 @@ export async function registerDiscoveryRoutes(app: FastifyInstance) {
     scope.addHook("preHandler", scope.requireTenant);
 
     scope.get("/admin/tenants/:slug/discovery", async (req) => {
-      return { searches: await listSearches(req.tenantId!) };
+      const [searches, credits] = await Promise.all([listSearches(req.tenantId!), getCredits(req.tenantId!)]);
+      return { searches, credits };
+    });
+
+    // Saldo + extrato de créditos.
+    scope.get("/admin/tenants/:slug/credits", async (req) => {
+      const [credits, transactions] = await Promise.all([
+        getCredits(req.tenantId!),
+        listTransactions(req.tenantId!, 50),
+      ]);
+      return { credits, transactions };
+    });
+
+    // Recarga manual — SÓ superadmin.
+    scope.post("/admin/tenants/:slug/credits/topup", async (req, reply) => {
+      if (!requireSuperadmin(req, reply)) return;
+      const body = req.body as { amount?: number; reason?: string };
+      const amount = Number(body?.amount);
+      if (!Number.isInteger(amount) || amount <= 0) {
+        return reply.code(400).send({ error: "amount deve ser um inteiro positivo" });
+      }
+      const actor = req.auth?.kind === "user" ? `superadmin#${req.auth.userId}` : "service";
+      const total = await topup(req.tenantId!, amount, actor, body?.reason);
+      logger.info({ tenant: req.tenantSlug, amount, actor }, "credits: topup via admin");
+      return reply.send({ ok: true, balance: total });
     });
 
     scope.post("/admin/tenants/:slug/discovery", async (req, reply) => {
@@ -75,19 +102,30 @@ export async function registerDiscoveryRoutes(app: FastifyInstance) {
       }
       const requested = Math.min(Math.max(10, Number(body.requested_count ?? 100)), config.DISCOVERY_MAX_RESULTS);
 
+      // Reserva créditos (1 = 1 lead com telefone). Entrega parcial: roda só o
+      // que o saldo cobrir. Saldo zero → bloqueia e pede recarga.
+      const hold = await holdForSearch(req.tenantId!, requested);
+      if (hold <= 0) {
+        return reply.code(402).send({ error: "sem créditos de prospecção — peça uma recarga ao administrador" });
+      }
+
       const search = await createSearch({
         tenant_id: req.tenantId!,
         name: body.name.trim(),
         filters,
-        requested_count: requested,
+        requested_count: hold, // cap parcial pelo saldo
+        reserved_credits: hold,
       });
       await discoveryQueue.add(
         "run",
         { searchId: search.id },
         { jobId: discoveryJobId(search.id), removeOnComplete: true, removeOnFail: 20 },
       );
-      logger.info({ tenant: req.tenantSlug, searchId: search.id, requested }, "discovery: busca criada");
-      return reply.send({ search });
+      logger.info(
+        { tenant: req.tenantSlug, searchId: search.id, requested, reserved: hold, partial: hold < requested },
+        "discovery: busca criada",
+      );
+      return reply.send({ search, reserved: hold, partial: hold < requested });
     });
 
     scope.get("/admin/tenants/:slug/discovery/:id", async (req, reply) => {
@@ -104,13 +142,19 @@ export async function registerDiscoveryRoutes(app: FastifyInstance) {
       const search = await getSearchForTenant(req.tenantId!, id);
       if (!search) return reply.code(404).send({ error: "not found" });
       if (search.status !== "failed") return reply.code(409).send({ error: "só buscas com falha podem ser re-executadas" });
-      await updateSearch(id, { status: "queued", error_msg: null });
+      // A falha devolveu a reserva — re-reserva pra rodar de novo (entrega parcial).
+      const hold = await holdForSearch(req.tenantId!, search.requested_count);
+      if (hold <= 0) {
+        return reply.code(402).send({ error: "sem créditos de prospecção — peça uma recarga ao administrador" });
+      }
+      await updateSearch(id, { status: "queued", error_msg: null, charged_credits: null });
+      await pool.query(`UPDATE discovery_searches SET reserved_credits = $1, requested_count = $1 WHERE id = $2`, [hold, id]);
       await discoveryQueue
         .add("run", { searchId: id }, { jobId: discoveryJobId(id), removeOnComplete: true, removeOnFail: 20 })
         .catch(async (err) => {
           if (!String(err?.message ?? "").includes("already exists")) throw err;
         });
-      logger.info({ tenant: req.tenantSlug, searchId: id }, "discovery: retry");
+      logger.info({ tenant: req.tenantSlug, searchId: id, reserved: hold }, "discovery: retry");
       return reply.send({ ok: true });
     });
 
@@ -119,6 +163,10 @@ export async function registerDiscoveryRoutes(app: FastifyInstance) {
       const search = await getSearchForTenant(req.tenantId!, id);
       if (!search) return reply.code(404).send({ error: "not found" });
       if (search.status === "running") return reply.code(409).send({ error: "busca em andamento" });
+      // Busca em fila ainda segura a reserva (não rodou) — devolve ao saldo.
+      if (search.status === "queued" && search.charged_credits == null && search.reserved_credits > 0) {
+        await releaseHold(req.tenantId!, search.reserved_credits);
+      }
       await deleteSearch(req.tenantId!, id);
       return reply.send({ ok: true });
     });

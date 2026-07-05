@@ -1,8 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Plus, Server, Wifi, WifiOff } from "lucide-react";
+import { Plus, Server, Wifi, WifiOff, Coins } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Modal } from "@/components/ui/modal";
 import { Input, Select, Field } from "@/components/ui/input";
@@ -33,6 +33,7 @@ const PLAYBOOKS = [
 export function TenantsHub({ initial, error }: { initial: TenantSummary[]; error: string | null }) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
+  const [creditTenant, setCreditTenant] = useState<TenantSummary | null>(null);
 
   return (
     <div className="space-y-5">
@@ -61,12 +62,13 @@ export function TenantsHub({ initial, error }: { initial: TenantSummary[]; error
               <th className="px-5 py-3 font-medium">Instância (Evolution)</th>
               <th className="px-5 py-3 font-medium">Playbook</th>
               <th className="px-5 py-3 font-medium">Status</th>
+              <th className="px-5 py-3 text-right font-medium">Créditos</th>
             </tr>
           </thead>
           <tbody>
             {initial.length === 0 && !error && (
               <tr>
-                <td colSpan={4} className="px-5 py-12 text-center text-ink-muted">
+                <td colSpan={5} className="px-5 py-12 text-center text-ink-muted">
                   <Server size={28} className="mx-auto mb-3 text-ink-faint" strokeWidth={1.5} />
                   Nenhum tenant provisionado ainda.
                 </td>
@@ -97,6 +99,11 @@ export function TenantsHub({ initial, error }: { initial: TenantSummary[]; error
                     </span>
                   )}
                 </td>
+                <td className="px-5 py-3.5 text-right">
+                  <Button size="sm" variant="outline" onClick={() => setCreditTenant(t)}>
+                    <Coins size={13} /> Creditar
+                  </Button>
+                </td>
               </tr>
             ))}
           </tbody>
@@ -104,7 +111,141 @@ export function TenantsHub({ initial, error }: { initial: TenantSummary[]; error
       </div>
 
       <ProvisionModal open={open} onClose={() => setOpen(false)} onDone={() => router.refresh()} />
+      <CreditModal tenant={creditTenant} onClose={() => setCreditTenant(null)} />
     </div>
+  );
+}
+
+type CreditTx = {
+  id: number;
+  amount: number;
+  balance_after: number;
+  kind: string;
+  reason: string | null;
+  created_at: string;
+};
+
+function CreditModal({ tenant, onClose }: { tenant: TenantSummary | null; onClose: () => void }) {
+  const [credits, setCredits] = useState<{ balance: number; reserved: number } | null>(null);
+  const [txs, setTxs] = useState<CreditTx[]>([]);
+  const [amount, setAmount] = useState(500);
+  const [reason, setReason] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+
+  const load = async (slug: string) => {
+    try {
+      const res = await fetch(`/api/admin-proxy/tenants/${slug}/credits`, { cache: "no-store" });
+      const data = await res.json();
+      if (res.ok) {
+        setCredits(data.credits);
+        setTxs(data.transactions ?? []);
+      }
+    } catch {
+      /* silencioso */
+    }
+  };
+
+  useEffect(() => {
+    if (tenant) {
+      setCredits(null);
+      setTxs([]);
+      setErr(null);
+      load(tenant.slug);
+    }
+  }, [tenant]);
+
+  const submit = async () => {
+    if (!tenant) return;
+    setBusy(true);
+    setErr(null);
+    try {
+      const res = await fetch(`/api/admin-proxy/tenants/${tenant.slug}/credits/topup`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ amount, reason: reason.trim() || undefined }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data?.error ?? "erro ao creditar");
+      setReason("");
+      await load(tenant.slug);
+    } catch (e) {
+      setErr(String(e instanceof Error ? e.message : e));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <Modal
+      open={tenant != null}
+      onClose={onClose}
+      title={tenant ? `Créditos · ${tenant.name}` : undefined}
+      subtitle="1 crédito = 1 lead com telefone na busca de leads"
+    >
+      <div className="space-y-4">
+        <div className="flex items-center justify-between rounded-xl border border-accent-bronze/25 bg-accent-bronze/10 px-4 py-3">
+          <span className="text-[13px] text-ink-soft">Saldo atual</span>
+          <span className="flex items-center gap-2 font-serif text-2xl text-accent-bronze-soft">
+            <Coins size={18} /> {credits ? credits.balance : "…"}
+            {credits && credits.reserved > 0 && (
+              <span className="text-xs text-ink-faint">+ {credits.reserved} em uso</span>
+            )}
+          </span>
+        </div>
+
+        <div className="grid grid-cols-2 gap-3">
+          <Field label="Adicionar créditos">
+            <Input type="number" min={1} value={amount} onChange={(e) => setAmount(Number(e.target.value))} />
+          </Field>
+          <Field label="Motivo (opcional)">
+            <Input value={reason} onChange={(e) => setReason(e.target.value)} placeholder="ex: pacote inicial" />
+          </Field>
+        </div>
+        <div className="flex flex-wrap gap-1.5">
+          {[100, 500, 1000, 5000].map((v) => (
+            <button
+              key={v}
+              onClick={() => setAmount(v)}
+              className={`rounded-full border px-3 py-1 text-xs transition-colors ${
+                amount === v
+                  ? "border-accent-bronze/50 bg-accent-bronze/10 text-accent-bronze-soft"
+                  : "border-line text-ink-soft hover:border-accent-bronze/30"
+              }`}
+            >
+              +{v.toLocaleString("pt-BR")}
+            </button>
+          ))}
+        </div>
+
+        {err && <p className="text-xs text-danger">{err}</p>}
+        <Button variant="bronze" className="w-full" onClick={submit} disabled={busy || amount <= 0}>
+          <Coins size={14} /> {busy ? "Creditando…" : `Creditar ${amount.toLocaleString("pt-BR")}`}
+        </Button>
+
+        {txs.length > 0 && (
+          <div>
+            <p className="mb-1.5 text-[10px] font-medium uppercase tracking-[0.14em] text-ink-faint">
+              Últimos movimentos
+            </p>
+            <div className="max-h-48 space-y-1 overflow-y-auto">
+              {txs.map((t) => (
+                <div key={t.id} className="flex items-center justify-between rounded-md bg-canvas-deep/60 px-3 py-1.5 text-xs">
+                  <span className="text-ink-soft">
+                    {t.kind === "topup" ? "Recarga" : t.kind === "debit" ? "Consumo" : "Ajuste"}
+                    {t.reason ? ` · ${t.reason}` : ""}
+                  </span>
+                  <span className={t.amount >= 0 ? "text-success" : "text-ink-muted"}>
+                    {t.amount >= 0 ? "+" : ""}
+                    {t.amount}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+    </Modal>
   );
 }
 

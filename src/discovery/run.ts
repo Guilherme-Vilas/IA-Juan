@@ -2,6 +2,7 @@ import { config } from "../config.js";
 import { logger } from "../core/logger.js";
 import { requireTenantById } from "../core/tenants.js";
 import { checkWhatsappNumbers } from "../core/evolution.js";
+import { settleSearch, releaseHold } from "../core/credits.js";
 import { normalizeBrazilPhone } from "../prospect/csv.js";
 import { searchCnpj, CNPJ_PAGE_SIZE, type CnpjHit } from "./providers/casadosdados.js";
 import { fetchCnpjDetail } from "./providers/minhareceita.js";
@@ -100,14 +101,19 @@ export async function runDiscovery(searchId: number): Promise<void> {
       await updateSearch(searchId, { whatsapp_count: whatsappCount });
     }
 
-    await updateSearch(searchId, { status: "done", whatsapp_count: whatsappCount });
+    // Créditos: cobra 1 por lead COM TELEFONE (o que a reserva pagou), devolve
+    // ao saldo os créditos das empresas sem contato. Idempotente por charged_credits.
+    const { charged } = await settleSearch(search.tenant_id, searchId, search.reserved_credits, withPhone);
+    await updateSearch(searchId, { status: "done", whatsapp_count: whatsappCount, charged_credits: charged });
     logger.info(
-      { searchId, tenant: tenant.slug, found: hits.length, withPhone, whatsappCount },
+      { searchId, tenant: tenant.slug, found: hits.length, withPhone, whatsappCount, charged },
       "discovery: busca finalizada",
     );
   } catch (err) {
     const msg = (err as Error).message ?? String(err);
-    await updateSearch(searchId, { status: "failed", error_msg: msg.slice(0, 500) });
+    // Falhou: devolve a reserva inteira (nada foi cobrado).
+    await releaseHold(search.tenant_id, search.reserved_credits).catch(() => undefined);
+    await updateSearch(searchId, { status: "failed", error_msg: msg.slice(0, 500), charged_credits: 0 });
     logger.error({ err, searchId }, "discovery: busca falhou");
   }
 }

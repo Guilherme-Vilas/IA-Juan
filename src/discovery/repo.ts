@@ -16,6 +16,8 @@ export type DiscoverySearchRow = {
   whatsapp_count: number;
   error_msg: string | null;
   exported_campaign_id: number | null;
+  reserved_credits: number;
+  charged_credits: number | null;
   created_at: Date;
   updated_at: Date;
 };
@@ -45,11 +47,12 @@ export async function createSearch(input: {
   name: string;
   filters: CnpjSearchFilters;
   requested_count: number;
+  reserved_credits: number;
 }): Promise<DiscoverySearchRow> {
   const { rows } = await pool.query<DiscoverySearchRow>(
-    `INSERT INTO discovery_searches (tenant_id, name, filters, requested_count)
-     VALUES ($1,$2,$3,$4) RETURNING *`,
-    [input.tenant_id, input.name, JSON.stringify(input.filters), input.requested_count],
+    `INSERT INTO discovery_searches (tenant_id, name, filters, requested_count, reserved_credits)
+     VALUES ($1,$2,$3,$4,$5) RETURNING *`,
+    [input.tenant_id, input.name, JSON.stringify(input.filters), input.requested_count, input.reserved_credits],
   );
   return rows[0]!;
 }
@@ -83,7 +86,13 @@ export async function updateSearch(
   patch: Partial<
     Pick<
       DiscoverySearchRow,
-      "status" | "found_count" | "with_phone_count" | "whatsapp_count" | "error_msg" | "exported_campaign_id"
+      | "status"
+      | "found_count"
+      | "with_phone_count"
+      | "whatsapp_count"
+      | "error_msg"
+      | "exported_campaign_id"
+      | "charged_credits"
     >
   >,
 ): Promise<void> {
