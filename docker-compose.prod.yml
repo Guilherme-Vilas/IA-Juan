@@ -198,7 +198,8 @@ services:
       app:
         condition: service_started
 
-  # Landing page de marketing (systemvita.com.br) — estatica, sem backend.
+  # Landing page de marketing (systemvita.com.br). A demo interativa da
+  # Stella fala com o backend pela rede interna (proxy /api/demo → app:3000).
   landing:
     build: ./landing
     restart: unless-stopped
@@ -207,6 +208,10 @@ services:
     environment:
       - NODE_ENV=production
       - NEXT_PUBLIC_APP_URL=${NEXT_PUBLIC_APP_URL:-https://app.systemvita.com.br}
+      - FASTIFY_BASE_URL=http://app:3000
+    depends_on:
+      app:
+        condition: service_started
 
 volumes:
   redis-data:

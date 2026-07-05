@@ -87,6 +87,12 @@ export async function sendText(tenant: TenantRow, waId: string, text: string): P
     logger.debug({ tenant: tenant.slug, waId, len: text.length }, "sendText suppressed (SIMULATOR_MODE)");
     return;
   }
+  // Tenant da demo pública: instância é virtual — as respostas chegam ao
+  // visitante pela API da demo, nunca pela Evolution.
+  if (tenant.slug === config.DEMO_TENANT_SLUG) {
+    logger.debug({ waId, len: text.length }, "sendText suppressed (demo tenant)");
+    return;
+  }
   try {
     await client.post(`/message/sendText/${tenant.evolution_instance}`, {
       number: waId,
@@ -105,6 +111,7 @@ export async function sendPresence(
   presence: "composing" | "paused" = "composing",
 ) {
   if (config.SIMULATOR_MODE) return;
+  if (tenant.slug === config.DEMO_TENANT_SLUG) return;
   // "paused" não existe na API — pra parar a indicação é só não chamar mais.
   if (presence === "paused") return;
   try {

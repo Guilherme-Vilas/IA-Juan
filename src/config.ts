@@ -92,6 +92,15 @@ const schema = z.object({
   // bloqueado por Cloudflare (jul/2026) — a API oficial exige chave (R$0,01/
   // consulta, portal.casadosdados.com.br). Base/path configuráveis pra seguir
   // a doc da conta sem mudar código.
+  // Demo pública da landing (Stella real, sessões efêmeras, sem WhatsApp).
+  DEMO_TENANT_SLUG: z.string().default("demo"),
+  DEMO_MAX_MESSAGES: z.coerce.number().default(14),
+  DEMO_MAX_SESSIONS_PER_IP_DAY: z.coerce.number().default(6),
+  DEMO_MAX_SESSIONS_PER_DAY: z.coerce.number().default(300),
+  // Token de ingestão do tenant que recebe o VISITANTE como lead ao final da
+  // demo (Configurações → Captura do seu tenant comercial). Vazio = sem captura.
+  DEMO_CAPTURE_INGEST_TOKEN: z.string().optional(),
+
   CASADOSDADOS_BASE_URL: z.string().url().default("https://api.casadosdados.com.br"),
   CASADOSDADOS_SEARCH_PATH: z.string().default("/v2/public/cnpj/search"),
   CASADOSDADOS_API_KEY: z.string().optional(),

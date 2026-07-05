@@ -171,6 +171,9 @@ const tickWorker = new Worker<ProspectTickJob>(
     // Motor de automacoes: inicia cadencias de no-reply e avanca os passos vencidos.
     await scanNoReplyAutomations().catch((err) => logger.error({ err }, "automations no_reply scan fatal"));
     await advanceRuns().catch((err) => logger.error({ err }, "automations advance fatal"));
+    // Demo pública: sessões são efêmeras — limpa leads da demo com +24h.
+    const { cleanupDemoLeads } = await import("../api/demo.js");
+    await cleanupDemoLeads().catch((err) => logger.error({ err }, "demo cleanup fatal"));
   },
   { ...bullConnection, concurrency: 1 },
 );

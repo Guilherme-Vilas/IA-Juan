@@ -13,6 +13,7 @@ import { registerSimulatorRoutes } from "./api/simulator.js";
 import { registerAdminRoutes } from "./api/admin.js";
 import { registerProspectRoutes } from "./api/prospect.js";
 import { registerDiscoveryRoutes } from "./api/discovery.js";
+import { registerDemoRoutes } from "./api/demo.js";
 import { registerGoogleRoutes } from "./api/google.js";
 import { registerSaasRoutes } from "./api/saas.js";
 import { registerTenantProvisioningRoutes } from "./api/tenants.js";
@@ -56,6 +57,7 @@ async function main() {
   await registerAdminRoutes(app);
   await registerProspectRoutes(app);
   await registerDiscoveryRoutes(app);
+  await registerDemoRoutes(app);
   await registerGoogleRoutes(app);
   await registerSaasRoutes(app);
   await registerKnowledgeRoutes(app);
