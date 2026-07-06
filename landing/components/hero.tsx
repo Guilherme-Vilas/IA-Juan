@@ -1,4 +1,4 @@
-import { ArrowRight, Clock, ShieldCheck, MessagesSquare } from "lucide-react";
+import { ArrowRight, Clock, ShieldCheck, MessagesSquare, Sparkles } from "lucide-react";
 import { LiveChat } from "./live-chat";
 import { primaryCtaHref } from "@/lib/site";
 
@@ -31,10 +31,10 @@ export function Hero() {
             Agendar demonstração <ArrowRight size={16} />
           </a>
           <a
-            href="#como-funciona"
-            className="inline-flex items-center gap-2 rounded-md border border-line px-6 py-3 text-sm text-ink transition-colors hover:border-line-strong"
+            href="#demo"
+            className="inline-flex items-center gap-2 rounded-md border border-accent-bronze/40 bg-accent-bronze/[0.07] px-6 py-3 text-sm text-accent-bronze-soft transition-colors hover:bg-accent-bronze/15"
           >
-            Ver como funciona
+            <Sparkles size={15} /> Testar a IA agora
           </a>
         </div>
 
@@ -52,9 +52,17 @@ export function Hero() {
           </span>
         </div>
 
-        {/* Prova visual: a conversa acontecendo na frente do visitante */}
+        {/* Prova visual: a conversa acontecendo na frente do visitante — e clicável */}
         <div className="mx-auto mt-14 max-w-md">
-          <LiveChat />
+          <a href="#demo" className="group block rounded-xl transition-shadow hover:shadow-glow-bronze">
+            <LiveChat />
+          </a>
+          <a
+            href="#demo"
+            className="mt-4 inline-flex items-center gap-1.5 text-[13px] text-accent-bronze-soft transition-colors hover:text-ink"
+          >
+            Agora teste você mesmo — converse com a Stella <ArrowRight size={13} />
+          </a>
         </div>
       </div>
     </section>

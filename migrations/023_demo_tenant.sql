@@ -8,5 +8,5 @@ INSERT INTO tenants
    timezone, work_start_hour, work_end_hour, meeting_duration_min, prompt_dir, active)
 VALUES
   ('demo', 'Demo — Landing Page', 'demo-virtual', '', 'Equipe Vita OS',
-   'America/Sao_Paulo', 0, 24, 30, 'demo', true)
+   'America/Sao_Paulo', 9, 18, 30, 'demo', true)
 ON CONFLICT (slug) DO NOTHING;
