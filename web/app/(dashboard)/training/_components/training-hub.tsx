@@ -30,7 +30,7 @@ type Video = {
   completed?: boolean;
 };
 
-// Converte URLs comuns (YouTube/Vimeo/Loom) pra URL de embed.
+// Converte URLs comuns (YouTube/Vimeo/Loom/Google Drive) pra URL de embed.
 function toEmbedUrl(url: string): string {
   try {
     const u = new URL(url);
@@ -45,6 +45,12 @@ function toEmbedUrl(url: string): string {
     }
     if (u.hostname.includes("loom.com") && u.pathname.includes("/share/")) {
       return url.replace("/share/", "/embed/");
+    }
+    // Google Drive: .../file/d/<ID>/view → .../file/d/<ID>/preview (player embutido).
+    // O arquivo precisa estar compartilhado como "qualquer pessoa com o link".
+    if (u.hostname.includes("drive.google.com")) {
+      const m = u.pathname.match(/\/file\/d\/([^/]+)/);
+      if (m) return `https://drive.google.com/file/d/${m[1]}/preview`;
     }
     return url; // já é embed ou formato desconhecido — usa como veio
   } catch {
