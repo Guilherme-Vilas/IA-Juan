@@ -24,6 +24,8 @@ export type TenantRow = {
   // Prospecção: teto diário da instância (todas as campanhas) + início do warm-up do chip.
   prospect_daily_cap: number;
   prospect_warmup_started_at: Date | null;
+  // Área de treinamentos liberada pra este tenant (superadmin controla).
+  training_enabled: boolean;
   created_at: Date;
   updated_at: Date;
 };

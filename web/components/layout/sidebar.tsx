@@ -20,11 +20,19 @@ import {
   Ticket,
   LogOut,
   Radar,
+  GraduationCap,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { LogoMark } from "@/components/ui/logo";
 
-type NavItem = { href: string; label: string; icon: typeof LayoutDashboard; superadmin?: boolean };
+type NavItem = {
+  href: string;
+  label: string;
+  icon: typeof LayoutDashboard;
+  superadmin?: boolean;
+  // visível só quando a área de treinamentos está liberada pro tenant
+  training?: boolean;
+};
 type NavGroup = { label?: string; items: NavItem[] };
 
 const groups: NavGroup[] = [
@@ -60,6 +68,7 @@ const groups: NavGroup[] = [
       { href: "/users", label: "Usuários", icon: Users, superadmin: true },
       { href: "/invites", label: "Convites", icon: Ticket, superadmin: true },
       { href: "/playbooks", label: "Playbooks", icon: BookOpen },
+      { href: "/training", label: "Treinamentos", icon: GraduationCap, training: true },
       { href: "/settings", label: "Configurações", icon: Settings },
     ],
   },
@@ -67,10 +76,12 @@ const groups: NavGroup[] = [
 
 export function Sidebar({
   isSuperadmin = false,
+  showTraining = false,
   userLabel = "Usuário",
   userRole = "—",
 }: {
   isSuperadmin?: boolean;
+  showTraining?: boolean;
   userLabel?: string;
   userRole?: string;
 }) {
@@ -104,7 +115,7 @@ export function Sidebar({
               </div>
             )}
             {group.items
-              .filter((it) => !it.superadmin || isSuperadmin)
+              .filter((it) => (!it.superadmin || isSuperadmin) && (!it.training || showTraining))
               .map(({ href, label, icon: Icon }) => {
               const active = pathname.startsWith(href);
               return (

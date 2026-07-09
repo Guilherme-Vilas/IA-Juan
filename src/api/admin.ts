@@ -54,6 +54,7 @@ export async function registerAdminRoutes(app: FastifyInstance) {
         owner_name: t.owner_name,
         playbook_slug: t.playbook_slug,
         active: t.active,
+        training_enabled: t.training_enabled,
       })),
     };
   });

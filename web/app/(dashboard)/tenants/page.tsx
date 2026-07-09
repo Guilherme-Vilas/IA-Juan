@@ -12,6 +12,7 @@ type TenantSummary = {
   owner_name: string;
   playbook_slug: string | null;
   active: boolean;
+  training_enabled: boolean;
 };
 
 export default async function TenantsPage() {

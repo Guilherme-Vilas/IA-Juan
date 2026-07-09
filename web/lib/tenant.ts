@@ -13,7 +13,7 @@ export async function listTenantsForUI(): Promise<TenantSummary[]> {
   if (!session) return [];
   const allowedSlugs = new Set(session.tenants.map((t) => t.slug));
   const { rows } = await pool.query<TenantSummary>(
-    `SELECT id, slug, name, owner_name, active FROM tenants ORDER BY id ASC`,
+    `SELECT id, slug, name, owner_name, active, training_enabled FROM tenants ORDER BY id ASC`,
   );
   // Superadmin enxerga tudo; demais, só os permitidos.
   if (session.is_superadmin) return rows;

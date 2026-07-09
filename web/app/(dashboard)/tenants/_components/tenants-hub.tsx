@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Plus, Server, Wifi, WifiOff, Coins } from "lucide-react";
+import { Plus, Server, Wifi, WifiOff, Coins, GraduationCap } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Modal } from "@/components/ui/modal";
 import { Input, Select, Field } from "@/components/ui/input";
@@ -16,6 +16,7 @@ type TenantSummary = {
   owner_name: string;
   playbook_slug: string | null;
   active: boolean;
+  training_enabled: boolean;
 };
 
 type ProvisionResult = {
@@ -62,13 +63,14 @@ export function TenantsHub({ initial, error }: { initial: TenantSummary[]; error
               <th className="px-5 py-3 font-medium">Instância (Evolution)</th>
               <th className="px-5 py-3 font-medium">Playbook</th>
               <th className="px-5 py-3 font-medium">Status</th>
+              <th className="px-5 py-3 text-center font-medium">Treinamentos</th>
               <th className="px-5 py-3 text-right font-medium">Créditos</th>
             </tr>
           </thead>
           <tbody>
             {initial.length === 0 && !error && (
               <tr>
-                <td colSpan={5} className="px-5 py-12 text-center text-ink-muted">
+                <td colSpan={6} className="px-5 py-12 text-center text-ink-muted">
                   <Server size={28} className="mx-auto mb-3 text-ink-faint" strokeWidth={1.5} />
                   Nenhum tenant provisionado ainda.
                 </td>
@@ -99,6 +101,9 @@ export function TenantsHub({ initial, error }: { initial: TenantSummary[]; error
                     </span>
                   )}
                 </td>
+                <td className="px-5 py-3.5 text-center">
+                  <TrainingToggle tenant={t} />
+                </td>
                 <td className="px-5 py-3.5 text-right">
                   <Button size="sm" variant="outline" onClick={() => setCreditTenant(t)}>
                     <Coins size={13} /> Creditar
@@ -113,6 +118,41 @@ export function TenantsHub({ initial, error }: { initial: TenantSummary[]; error
       <ProvisionModal open={open} onClose={() => setOpen(false)} onDone={() => router.refresh()} />
       <CreditModal tenant={creditTenant} onClose={() => setCreditTenant(null)} />
     </div>
+  );
+}
+
+// Libera/bloqueia a área de Treinamentos pro tenant (superadmin).
+function TrainingToggle({ tenant }: { tenant: TenantSummary }) {
+  const router = useRouter();
+  const [busy, setBusy] = useState(false);
+
+  const toggle = async () => {
+    setBusy(true);
+    try {
+      await fetch(`/api/admin-proxy/tenants/${tenant.slug}/training-access`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ enabled: !tenant.training_enabled }),
+      });
+      router.refresh();
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <button
+      onClick={toggle}
+      disabled={busy}
+      title={tenant.training_enabled ? "Clique pra bloquear" : "Clique pra liberar"}
+      className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] font-medium transition-colors disabled:opacity-50 ${
+        tenant.training_enabled
+          ? "border-success/30 bg-success/10 text-success"
+          : "border-line bg-canvas-deep text-ink-faint hover:border-accent-bronze/40 hover:text-ink-soft"
+      }`}
+    >
+      <GraduationCap size={12} /> {tenant.training_enabled ? "Liberado" : "Bloqueado"}
+    </button>
   );
 }
 

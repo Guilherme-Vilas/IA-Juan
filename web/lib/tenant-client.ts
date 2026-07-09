@@ -10,4 +10,5 @@ export type TenantSummary = {
   name: string;
   owner_name: string;
   active: boolean;
+  training_enabled: boolean;
 };
