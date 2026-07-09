@@ -52,6 +52,8 @@ export function CampaignDetail({
     duplicates: number;
     invalid: { row: number; reason: string }[];
     suppressed?: { blacklisted: number; ja_prospectado: number; lead_existente: number };
+    mapping?: Record<string, string | null> | null;
+    found?: number;
   } | null>(null);
   const [previews, setPreviews] = useState<Preview[] | null>(null);
   const [busy, setBusy] = useState(false);
@@ -82,6 +84,31 @@ export function CampaignDetail({
       });
       setUploadResult(data);
       setCsv("");
+      router.refresh();
+    } catch (err) {
+      setError(String(err));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  // Importador universal: qualquer arquivo → base64 → a IA acha os contatos.
+  const uploadFile = async (file: File) => {
+    setBusy(true);
+    setError(null);
+    setUploadResult(null);
+    try {
+      const base64 = await new Promise<string>((resolve, reject) => {
+        const r = new FileReader();
+        r.onload = () => resolve(String(r.result).split(",")[1] ?? "");
+        r.onerror = () => reject(new Error("falha ao ler o arquivo"));
+        r.readAsDataURL(file);
+      });
+      const data = await call(`${campaignBase}/prospects/import-file`, {
+        method: "POST",
+        body: JSON.stringify({ filename: file.name, base64 }),
+      });
+      setUploadResult(data);
       router.refresh();
     } catch (err) {
       setError(String(err));
@@ -207,22 +234,57 @@ export function CampaignDetail({
                 Header obrigatório: <code>{campaign.channel === "whatsapp" ? "telefone" : "linkedin_url"}</code>
                 . Opcionais: nome, empresa, cargo + qualquer coluna extra.
               </p>
-              <div className="flex gap-2">
+              <div className="flex flex-wrap gap-2">
+                {campaign.channel === "whatsapp" && (
+                  <label
+                    className={`inline-flex h-9 cursor-pointer items-center gap-2 rounded-md border border-accent-bronze/40 bg-accent-bronze/[0.07] px-4 text-[13px] text-accent-bronze-soft transition-colors hover:bg-accent-bronze/15 ${
+                      busy ? "pointer-events-none opacity-50" : ""
+                    }`}
+                    title="Qualquer planilha ou PDF — a IA encontra os contatos, mesmo fora do padrão"
+                  >
+                    <Upload size={14} /> {busy ? "Importando…" : "Enviar arquivo (Excel/CSV/PDF)"}
+                    <input
+                      type="file"
+                      accept=".csv,.tsv,.xlsx,.xls,.pdf,.txt"
+                      className="hidden"
+                      disabled={busy}
+                      onChange={(e) => {
+                        const f = e.target.files?.[0];
+                        if (f) uploadFile(f);
+                        e.target.value = "";
+                      }}
+                    />
+                  </label>
+                )}
                 <Button variant="outline" onClick={preview} disabled={busy || metrics.pending === 0}>
                   <Eye size={14} /> Preview msg
                 </Button>
-                <Button onClick={upload} disabled={busy || !csv.trim()}>
-                  <Upload size={14} /> Importar
+                <Button variant="outline" onClick={upload} disabled={busy || !csv.trim()}>
+                  <Upload size={14} /> Importar colado
                 </Button>
               </div>
             </div>
             {uploadResult && (
               <div className="rounded bg-canvas-surface p-2 text-xs">
                 <p>
+                  {uploadResult.found != null && (
+                    <>
+                      Encontrados no arquivo: <strong>{uploadResult.found}</strong> ·{" "}
+                    </>
+                  )}
                   Importados: <strong>{uploadResult.inserted}</strong> · Duplicados:{" "}
                   <strong>{uploadResult.duplicates}</strong> · Inválidos:{" "}
                   <strong>{uploadResult.invalid.length}</strong>
                 </p>
+                {uploadResult.mapping && (
+                  <p className="mt-1 text-ink-muted">
+                    Colunas detectadas pela IA:{" "}
+                    {Object.entries(uploadResult.mapping)
+                      .filter(([, col]) => col)
+                      .map(([field, col]) => `${field} → "${col}"`)
+                      .join(" · ") || "nenhuma"}
+                  </p>
+                )}
                 {uploadResult.suppressed &&
                   (uploadResult.suppressed.blacklisted > 0 ||
                     uploadResult.suppressed.ja_prospectado > 0 ||

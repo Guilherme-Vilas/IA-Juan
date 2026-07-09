@@ -27,9 +27,39 @@ import {
   removeFromBlacklist,
 } from "../prospect/suppression.js";
 import { normalizeBrazilPhone } from "../prospect/csv.js";
+import { parseProspectsFile } from "../prospect/import-file.js";
+import type { ProspectInput } from "../prospect/repo.js";
 
 function isChannel(x: unknown): x is Channel {
   return x === "whatsapp" || x === "linkedin";
+}
+
+// Camadas de supressão do import (blacklist, já-prospectado 90d, lead do
+// funil) + inserção — compartilhado entre o import CSV e o de arquivo.
+async function suppressAndInsert(
+  tenantId: number,
+  campaignId: number,
+  channel: Channel,
+  prospects: ProspectInput[],
+) {
+  const ids = prospects.map((p) => p.external_id);
+  const [blacklisted, recent, suppressedLeads] = await Promise.all([
+    filterBlacklisted(tenantId, ids),
+    filterRecentlyProspected(tenantId, ids, campaignId),
+    channel === "whatsapp" ? filterSuppressedLeads(tenantId, ids) : Promise.resolve(new Set<string>()),
+  ]);
+  const clean = prospects.filter(
+    (p) => !blacklisted.has(p.external_id) && !recent.has(p.external_id) && !suppressedLeads.has(p.external_id),
+  );
+  const suppressed = {
+    blacklisted: blacklisted.size,
+    ja_prospectado: prospects.filter((p) => !blacklisted.has(p.external_id) && recent.has(p.external_id)).length,
+    lead_existente: prospects.filter(
+      (p) => !blacklisted.has(p.external_id) && !recent.has(p.external_id) && suppressedLeads.has(p.external_id),
+    ).length,
+  };
+  const { inserted, duplicates } = await insertProspects(tenantId, campaignId, clean);
+  return { inserted, duplicates, suppressed };
 }
 
 export async function registerProspectRoutes(app: FastifyInstance) {
@@ -144,35 +174,61 @@ export async function registerProspectRoutes(app: FastifyInstance) {
       if (!body?.csv) return reply.code(400).send({ error: "csv required" });
 
       const parsed = parseProspectsCsv(body.csv, campaign.channel);
-
-      // Camadas de supressão no import: blacklist (opt-out/LGPD), já prospectado
-      // em outra campanha (janela de 90d) e lead do funil em situação proibida.
-      const ids = parsed.prospects.map((p) => p.external_id);
-      const [blacklisted, recent, suppressedLeads] = await Promise.all([
-        filterBlacklisted(req.tenantId!, ids),
-        filterRecentlyProspected(req.tenantId!, ids, campaignId),
-        campaign.channel === "whatsapp"
-          ? filterSuppressedLeads(req.tenantId!, ids)
-          : Promise.resolve(new Set<string>()),
-      ]);
-
-      const clean = parsed.prospects.filter(
-        (p) => !blacklisted.has(p.external_id) && !recent.has(p.external_id) && !suppressedLeads.has(p.external_id),
+      const { inserted, duplicates, suppressed } = await suppressAndInsert(
+        req.tenantId!,
+        campaignId,
+        campaign.channel,
+        parsed.prospects,
       );
-      const suppressed = {
-        blacklisted: blacklisted.size,
-        ja_prospectado: parsed.prospects.filter((p) => !blacklisted.has(p.external_id) && recent.has(p.external_id)).length,
-        lead_existente: parsed.prospects.filter(
-          (p) => !blacklisted.has(p.external_id) && !recent.has(p.external_id) && suppressedLeads.has(p.external_id),
-        ).length,
-      };
-
-      const { inserted, duplicates } = await insertProspects(req.tenantId!, campaignId, clean);
       logger.info(
         { tenant: req.tenantSlug, campaignId, inserted, duplicates, invalid: parsed.invalid.length, suppressed },
         "admin: prospects uploaded",
       );
       return reply.send({ inserted, duplicates, invalid: parsed.invalid, suppressed, headers: parsed.headers });
+    });
+
+    // Importador UNIVERSAL: qualquer arquivo (CSV/Excel/PDF/TXT em qualquer
+    // layout) em base64 — a IA acha as colunas/contatos e normaliza.
+    scope.post("/admin/tenants/:slug/campaigns/:id/prospects/import-file", async (req, reply) => {
+      const campaignId = Number((req.params as { id: string }).id);
+      const campaign = await getCampaign(req.tenantId!, campaignId);
+      if (!campaign) return reply.code(404).send({ error: "campaign not found" });
+      if (campaign.channel !== "whatsapp") {
+        return reply.code(400).send({ error: "importação de arquivo é só pra campanhas WhatsApp" });
+      }
+      const body = req.body as { filename?: string; base64?: string };
+      if (!body?.base64) return reply.code(400).send({ error: "arquivo obrigatório" });
+      let buf: Buffer;
+      try {
+        buf = Buffer.from(body.base64, "base64");
+      } catch {
+        return reply.code(400).send({ error: "base64 inválido" });
+      }
+      if (buf.length > 9 * 1024 * 1024) return reply.code(413).send({ error: "arquivo grande demais (máx 9MB)" });
+
+      try {
+        const parsed = await parseProspectsFile(body.filename ?? "arquivo.csv", buf);
+        const { inserted, duplicates, suppressed } = await suppressAndInsert(
+          req.tenantId!,
+          campaignId,
+          campaign.channel,
+          parsed.prospects,
+        );
+        logger.info(
+          { tenant: req.tenantSlug, campaignId, file: body.filename, found: parsed.found, inserted, duplicates, suppressed },
+          "admin: prospects imported from file",
+        );
+        return reply.send({
+          inserted,
+          duplicates,
+          invalid: parsed.invalid,
+          suppressed,
+          mapping: parsed.mapping,
+          found: parsed.found,
+        });
+      } catch (err) {
+        return reply.code(400).send({ error: String(err instanceof Error ? err.message : err) });
+      }
     });
 
     // ===== Blacklist (opt-outs LGPD + bloqueios manuais) =====
