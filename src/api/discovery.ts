@@ -56,8 +56,42 @@ export async function registerDiscoveryRoutes(app: FastifyInstance) {
     scope.addHook("preHandler", scope.requireTenant);
 
     scope.get("/admin/tenants/:slug/discovery", async (req) => {
-      const [searches, credits] = await Promise.all([listSearches(req.tenantId!), getCredits(req.tenantId!)]);
-      return { searches, credits };
+      const [searches, credits, keyRow] = await Promise.all([
+        listSearches(req.tenantId!),
+        getCredits(req.tenantId!),
+        pool.query<{ casadosdados_api_key: string | null }>(
+          `SELECT casadosdados_api_key FROM tenants WHERE id = $1`,
+          [req.tenantId!],
+        ),
+      ]);
+      const key = keyRow.rows[0]?.casadosdados_api_key?.trim() || null;
+      return {
+        searches,
+        credits,
+        // nunca devolve a chave inteira — só status + final pra conferência
+        source: {
+          configured: !!key || !!config.CASADOSDADOS_API_KEY,
+          own_key: !!key,
+          last4: key ? key.slice(-4) : null,
+        },
+      };
+    });
+
+    // Chave da API da Casa dos Dados do PRÓPRIO tenant — cola/troca/remove.
+    scope.patch("/admin/tenants/:slug/discovery/source", async (req, reply) => {
+      const body = req.body as { api_key?: string };
+      const key = (body?.api_key ?? "").trim();
+      if (key && (key.length < 8 || key.length > 200)) {
+        return reply.code(400).send({ error: "chave inválida — cole exatamente como aparece no portal" });
+      }
+      await pool.query(`UPDATE tenants SET casadosdados_api_key = $1, updated_at = now() WHERE id = $2`, [
+        key || null,
+        req.tenantId!,
+      ]);
+      const { invalidateTenantsCache } = await import("../core/tenants.js");
+      await invalidateTenantsCache();
+      logger.info({ tenant: req.tenantSlug, configured: !!key }, "discovery: chave da fonte atualizada");
+      return reply.send({ ok: true, configured: !!key, last4: key ? key.slice(-4) : null });
     });
 
     // Saldo + extrato de créditos.

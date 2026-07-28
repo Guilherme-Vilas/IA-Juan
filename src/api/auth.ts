@@ -1,8 +1,10 @@
 import type { FastifyInstance } from "fastify";
 import { logger } from "../core/logger.js";
+import { pool } from "../core/db.js";
 import {
   createUser,
   getUserByEmail,
+  getUserById,
   linkUserToTenant,
   listUsers,
   listUserTenants,
@@ -87,5 +89,37 @@ export async function registerAuthRoutes(app: FastifyInstance) {
     }
     logger.info({ userId: user.id, by: req.auth }, "auth: user created");
     return { user: { id: user.id, email: user.email, name: user.name, is_superadmin: user.is_superadmin } };
+  });
+
+  // ===== Excluir usuario (superadmin/service apenas) =====
+  // FKs cuidam das referencias: leads/tarefas atribuidas ficam sem dono
+  // (SET NULL); vinculos e progresso de treinamento somem (CASCADE).
+  app.delete("/auth/users/:id", { onRequest: [app.authenticate] }, async (req, reply) => {
+    if (!requireSuperadmin(req, reply)) return;
+    const id = Number((req.params as { id: string }).id);
+    if (!Number.isFinite(id)) return reply.code(400).send({ error: "id inválido" });
+
+    // Ninguém exclui a si mesmo — evita se trancar pra fora.
+    if (req.auth?.kind === "user" && req.auth.userId === id) {
+      return reply.code(400).send({ error: "você não pode excluir a si mesmo" });
+    }
+
+    const user = await getUserById(id);
+    if (!user) return reply.code(404).send({ error: "usuário não encontrado" });
+
+    // Nunca deixar a plataforma sem superadmin ativo.
+    if (user.is_superadmin) {
+      const { rows } = await pool.query<{ n: string }>(
+        `SELECT COUNT(*)::text AS n FROM users WHERE is_superadmin = true AND active = true AND id <> $1`,
+        [id],
+      );
+      if (Number(rows[0]?.n ?? "0") === 0) {
+        return reply.code(409).send({ error: "não dá pra excluir o último superadmin ativo" });
+      }
+    }
+
+    await pool.query(`DELETE FROM users WHERE id = $1`, [id]);
+    logger.info({ deletedUserId: id, email: user.email, by: req.auth }, "auth: user deleted");
+    return { ok: true };
   });
 }

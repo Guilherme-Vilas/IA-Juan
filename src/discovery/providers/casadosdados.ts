@@ -35,13 +35,20 @@ export type CnpjHit = {
 };
 
 // v5 aceita até 1000/página; 100 equilibra custo e memória. v2 pagina de 20.
-export const CNPJ_PAGE_SIZE = config.CASADOSDADOS_API_KEY ? 100 : 20;
+export function cnpjPageSize(apiKey: string | null | undefined): number {
+  return apiKey ? 100 : 20;
+}
 
+// apiKey: chave da API oficial — do TENANT (cada cliente contrata a sua),
+// com fallback no env global (demo/uso interno). Sem chave, cai no endpoint
+// público v2 (bloqueado por Cloudflare — o erro orienta a colar a chave).
 export async function searchCnpj(
   filters: CnpjSearchFilters,
   page: number,
+  apiKey?: string | null,
 ): Promise<{ total: number; hits: CnpjHit[] }> {
-  return config.CASADOSDADOS_API_KEY ? searchV5(filters, page) : searchV2Public(filters, page);
+  const key = apiKey ?? config.CASADOSDADOS_API_KEY ?? null;
+  return key ? searchV5(filters, page, key) : searchV2Public(filters, page);
 }
 
 // ===== API oficial v5 (com chave) =====
@@ -49,10 +56,11 @@ export async function searchCnpj(
 async function searchV5(
   filters: CnpjSearchFilters,
   page: number,
+  apiKey: string,
 ): Promise<{ total: number; hits: CnpjHit[] }> {
   const body: Record<string, unknown> = {
     situacao_cadastral: ["ATIVA"],
-    limite: CNPJ_PAGE_SIZE,
+    limite: cnpjPageSize(apiKey),
     pagina: page,
     mais_filtros: {
       somente_matriz: filters.somente_matriz ?? true,
@@ -89,7 +97,8 @@ async function searchV5(
   const json = await postJson(
     `${config.CASADOSDADOS_BASE_URL}/v5/cnpj/pesquisa?tipo_resultado=completo`,
     body,
-    { "api-key": config.CASADOSDADOS_API_KEY! },
+    { "api-key": apiKey },
+    true,
   );
 
   const j = json as { total?: number; cnpjs?: Array<Record<string, unknown>> };
@@ -149,7 +158,7 @@ async function searchV2Public(
     page,
   };
 
-  const json = await postJson(`${config.CASADOSDADOS_BASE_URL}${config.CASADOSDADOS_SEARCH_PATH}`, body, {});
+  const json = await postJson(`${config.CASADOSDADOS_BASE_URL}${config.CASADOSDADOS_SEARCH_PATH}`, body, {}, false);
   const j = json as { data?: { count?: number; cnpj?: Array<Record<string, unknown>> } };
   const rows = j?.data?.cnpj ?? [];
   const hits: CnpjHit[] = rows
@@ -172,6 +181,7 @@ async function postJson(
   url: string,
   body: unknown,
   extraHeaders: Record<string, string>,
+  hasKey: boolean,
 ): Promise<unknown> {
   const ctrl = new AbortController();
   const timeout = setTimeout(() => ctrl.abort(), 25_000);
@@ -184,18 +194,17 @@ async function postJson(
     });
     if (!res.ok) {
       const text = await res.text().catch(() => "");
-      const hasKey = !!config.CASADOSDADOS_API_KEY;
       const cloudflareBlock =
         (res.status === 403 || res.status === 503) &&
         (text.includes("Just a moment") || text.includes("Enable JavaScript") || text.includes("cf-"));
       if (cloudflareBlock && !hasKey) {
         throw new Error(
-          "A fonte pública da Casa dos Dados foi bloqueada (Cloudflare). Assine a API oficial em portal.casadosdados.com.br " +
-            "(R$0,01/consulta, 200 grátis no teste) e configure CASADOSDADOS_API_KEY no .env.",
+          "Nenhuma chave da Casa dos Dados configurada. Assine a API em portal.casadosdados.com.br " +
+            "(R$0,01/consulta, 200 grátis no teste) e cole a chave em Buscar leads → Fonte de dados.",
         );
       }
       if (res.status === 401) {
-        throw new Error("fonte CNPJ: chave inválida ou ausente (401) — confira CASADOSDADOS_API_KEY no .env do servidor");
+        throw new Error("fonte CNPJ: chave inválida (401) — confira a chave em Buscar leads → Fonte de dados");
       }
       if (res.status === 402 || res.status === 429) {
         throw new Error(`fonte CNPJ: limite/créditos da conta esgotados (${res.status}) — verifique seu plano na Casa dos Dados`);

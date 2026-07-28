@@ -4,7 +4,7 @@ import { requireTenantById } from "../core/tenants.js";
 import { checkWhatsappNumbers } from "../core/evolution.js";
 import { settleSearch, releaseHold } from "../core/credits.js";
 import { normalizeBrazilPhone } from "../prospect/csv.js";
-import { searchCnpj, CNPJ_PAGE_SIZE, type CnpjHit } from "./providers/casadosdados.js";
+import { searchCnpj, cnpjPageSize, type CnpjHit } from "./providers/casadosdados.js";
 import { fetchCnpjDetail } from "./providers/minhareceita.js";
 import { fetchCnpjDetailOpenCnpj } from "./providers/opencnpj.js";
 import {
@@ -31,20 +31,22 @@ export async function runDiscovery(searchId: number): Promise<void> {
     const tenant = await requireTenantById(search.tenant_id);
     const target = Math.min(Math.max(10, search.requested_count), config.DISCOVERY_MAX_RESULTS);
 
-    // ===== 1. Busca paginada =====
+    // ===== 1. Busca paginada — com a chave da API do PRÓPRIO tenant =====
+    const apiKey = tenant.casadosdados_api_key?.trim() || config.CASADOSDADOS_API_KEY || null;
+    const pageSize = cnpjPageSize(apiKey);
     const seen = new Set<string>();
     const hits: CnpjHit[] = [];
-    const maxPages = Math.ceil(target / CNPJ_PAGE_SIZE) + 3;
+    const maxPages = Math.ceil(target / pageSize) + 3;
     for (let page = 1; page <= maxPages && hits.length < target; page++) {
-      const res = await searchCnpj(search.filters, page);
+      const res = await searchCnpj(search.filters, page, apiKey);
       for (const h of res.hits) {
         if (!seen.has(h.cnpj) && hits.length < target) {
           seen.add(h.cnpj);
           hits.push(h);
         }
       }
-      if (res.hits.length < CNPJ_PAGE_SIZE) break; // última página
-      await sleep(400); // educado com a API pública
+      if (res.hits.length < pageSize) break; // última página
+      await sleep(400); // educado com a API
     }
     await updateSearch(searchId, { found_count: hits.length });
     logger.info({ searchId, found: hits.length }, "discovery: busca concluída, enriquecendo");

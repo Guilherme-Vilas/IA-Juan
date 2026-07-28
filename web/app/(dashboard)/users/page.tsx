@@ -4,6 +4,7 @@ import { getSession } from "@/lib/session";
 import { listTenantsForUI } from "@/lib/tenant";
 import { adminCall } from "@/lib/api";
 import { CreateUserForm } from "./create-user-form";
+import { DeleteUserButton } from "./delete-user-button";
 
 export const dynamic = "force-dynamic";
 
@@ -50,12 +51,13 @@ export default async function UsersPage() {
                     <th className="px-4 py-3 font-medium">Usuário</th>
                     <th className="px-4 py-3 font-medium">Tenants</th>
                     <th className="px-4 py-3 font-medium">Papel</th>
+                    <th className="px-4 py-3 text-right font-medium">Ações</th>
                   </tr>
                 </thead>
                 <tbody>
                   {users.length === 0 && (
                     <tr>
-                      <td colSpan={3} className="px-4 py-8 text-center text-ink-muted">
+                      <td colSpan={4} className="px-4 py-8 text-center text-ink-muted">
                         Nenhum usuário ainda.
                       </td>
                     </tr>
@@ -89,6 +91,11 @@ export default async function UsersPage() {
                           </span>
                         ) : (
                           <span className="text-ink-muted">{u.tenants[0]?.role ?? "—"}</span>
+                        )}
+                      </td>
+                      <td className="px-4 py-3 text-right">
+                        {u.id !== session.userId && (
+                          <DeleteUserButton userId={u.id} label={u.name || u.email} />
                         )}
                       </td>
                     </tr>

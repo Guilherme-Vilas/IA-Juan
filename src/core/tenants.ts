@@ -26,6 +26,8 @@ export type TenantRow = {
   prospect_warmup_started_at: Date | null;
   // Área de treinamentos liberada pra este tenant (superadmin controla).
   training_enabled: boolean;
+  // Chave da API da Casa dos Dados do PRÓPRIO cliente (busca de leads).
+  casadosdados_api_key: string | null;
   created_at: Date;
   updated_at: Date;
 };

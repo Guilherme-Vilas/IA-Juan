@@ -33,9 +33,11 @@ import {
   Mail,
   MapPin,
   Coins,
+  KeyRound,
 } from "lucide-react";
 
 type Credits = { balance: number; reserved: number };
+type Source = { configured: boolean; own_key: boolean; last4: string | null };
 
 // Perfis de cliente ideal — preenchem o formulário com filtros prontos.
 const PRESETS = [
@@ -51,6 +53,8 @@ export function DiscoveryHub({ tenantSlug }: { tenantSlug: string }) {
   const router = useRouter();
   const [searches, setSearches] = useState<DiscoverySearch[]>([]);
   const [credits, setCredits] = useState<Credits | null>(null);
+  const [source, setSource] = useState<Source | null>(null);
+  const [sourceOpen, setSourceOpen] = useState(false);
   const [loaded, setLoaded] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -77,6 +81,7 @@ export function DiscoveryHub({ tenantSlug }: { tenantSlug: string }) {
         const data = await res.json();
         setSearches(data.searches ?? []);
         if (data.credits) setCredits(data.credits);
+        if (data.source) setSource(data.source);
       }
     } catch {
       /* silencioso */
@@ -217,6 +222,22 @@ export function DiscoveryHub({ tenantSlug }: { tenantSlug: string }) {
             <p className="mt-1 text-[11px] text-ink-muted">
               1 crédito = 1 lead com telefone. Você só paga pelos leads com contato.
             </p>
+            <button
+              onClick={() => setSourceOpen(true)}
+              className={`mt-2 inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] transition-colors ${
+                source?.configured
+                  ? "border-success/30 bg-success/10 text-success"
+                  : "border-warning/40 bg-warning/10 text-warning"
+              }`}
+              title="Configurar a chave da API da Casa dos Dados"
+            >
+              <KeyRound size={11} />
+              {source?.own_key
+                ? `Fonte conectada ····${source.last4}`
+                : source?.configured
+                  ? "Fonte: chave da plataforma"
+                  : "Conectar fonte de dados"}
+            </button>
           </CardHeader>
           <CardBody className="space-y-4">
             <div>
@@ -359,6 +380,19 @@ export function DiscoveryHub({ tenantSlug }: { tenantSlug: string }) {
         )}
       </div>
 
+      {/* ===== Configuração da fonte (chave da Casa dos Dados) ===== */}
+      {sourceOpen && (
+        <SourceModal
+          base={base}
+          source={source}
+          onClose={() => setSourceOpen(false)}
+          onSaved={() => {
+            setSourceOpen(false);
+            load();
+          }}
+        />
+      )}
+
       {/* ===== Visualizador de leads ===== */}
       <Modal
         open={viewing != null}
@@ -432,6 +466,109 @@ export function DiscoveryHub({ tenantSlug }: { tenantSlug: string }) {
         )}
       </Modal>
     </div>
+  );
+}
+
+// ===== Modal da fonte de dados — cada cliente cola a PRÓPRIA chave =====
+
+function SourceModal({
+  base,
+  source,
+  onClose,
+  onSaved,
+}: {
+  base: string;
+  source: Source | null;
+  onClose: () => void;
+  onSaved: () => void;
+}) {
+  const [key, setKey] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+
+  const save = async (value: string) => {
+    setBusy(true);
+    setErr(null);
+    try {
+      const res = await fetch(`${base}/source`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ api_key: value }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data?.error ?? "erro ao salvar");
+      onSaved();
+    } catch (e) {
+      setErr(String(e instanceof Error ? e.message : e));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <Modal
+      open
+      onClose={onClose}
+      title="Fonte de dados — Casa dos Dados"
+      subtitle="A busca de leads usa a API oficial de CNPJs, contratada por você"
+    >
+      <div className="space-y-4">
+        <ol className="list-inside list-decimal space-y-1 rounded-lg bg-canvas-deep/60 p-3.5 text-[12.5px] leading-relaxed text-ink-soft">
+          <li>
+            Crie sua conta em{" "}
+            <a
+              href="https://portal.casadosdados.com.br"
+              target="_blank"
+              rel="noopener"
+              className="text-accent-bronze-soft underline"
+            >
+              portal.casadosdados.com.br
+            </a>{" "}
+            e assine a API (R$ 0,01 por consulta · 200 grátis no teste).
+          </li>
+          <li>Copie a sua chave de API no painel deles.</li>
+          <li>Cole abaixo — fica salva pra sempre, e você troca quando quiser.</li>
+        </ol>
+
+        {source?.own_key && (
+          <p className="text-[12px] text-success">
+            ✓ Chave conectada (final ····{source.last4}). Colar uma nova substitui a atual.
+          </p>
+        )}
+
+        <Field label="Chave da API" hint="colada exatamente como aparece no portal">
+          <Input
+            value={key}
+            onChange={(e) => setKey(e.target.value)}
+            placeholder="cole aqui a sua api-key"
+            autoComplete="off"
+          />
+        </Field>
+
+        {err && <p className="text-xs text-danger">{err}</p>}
+        <div className="flex items-center justify-between gap-2">
+          {source?.own_key ? (
+            <button
+              onClick={() => save("")}
+              disabled={busy}
+              className="text-[12px] text-ink-faint transition-colors hover:text-danger"
+            >
+              Remover chave
+            </button>
+          ) : (
+            <span />
+          )}
+          <div className="flex gap-2">
+            <Button variant="ghost" onClick={onClose}>
+              Cancelar
+            </Button>
+            <Button variant="bronze" onClick={() => save(key)} disabled={busy || !key.trim()}>
+              <KeyRound size={13} /> {busy ? "Salvando…" : "Salvar chave"}
+            </Button>
+          </div>
+        </div>
+      </div>
+    </Modal>
   );
 }
 
