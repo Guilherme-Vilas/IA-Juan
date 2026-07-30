@@ -175,6 +175,55 @@ async function searchV2Public(
   return { total: Number(j?.data?.count ?? hits.length), hits };
 }
 
+// ===== Saldo da conta (a doc pública não expõe o path — tentamos os
+// conhecidos; CASADOSDADOS_SALDO_PATH fixa o exato quando souber) =====
+
+const SALDO_CANDIDATES = ["/v5/usuario/saldo", "/v5/saldo", "/v4/usuario/saldo", "/v5/conta/saldo"];
+
+function pickNumber(obj: unknown): number | null {
+  if (typeof obj === "number" && Number.isFinite(obj)) return obj;
+  if (obj && typeof obj === "object") {
+    const o = obj as Record<string, unknown>;
+    for (const k of ["saldo", "balance", "creditos", "credits", "quantidade", "disponivel"]) {
+      const v = o[k];
+      if (typeof v === "number" && Number.isFinite(v)) return v;
+      if (typeof v === "string" && v.trim() && Number.isFinite(Number(v))) return Number(v);
+      if (v && typeof v === "object") {
+        const nested = pickNumber(v);
+        if (nested != null) return nested;
+      }
+    }
+  }
+  return null;
+}
+
+export async function fetchSourceBalance(apiKey: string): Promise<number | null> {
+  const paths = config.CASADOSDADOS_SALDO_PATH ? [config.CASADOSDADOS_SALDO_PATH] : SALDO_CANDIDATES;
+  for (const path of paths) {
+    const ctrl = new AbortController();
+    const timeout = setTimeout(() => ctrl.abort(), 8_000);
+    try {
+      const res = await fetch(`${config.CASADOSDADOS_BASE_URL}${path}`, {
+        headers: { Accept: "application/json", "api-key": apiKey },
+        signal: ctrl.signal,
+      });
+      if (res.ok) {
+        const json = (await res.json().catch(() => null)) as unknown;
+        const n = pickNumber(json);
+        if (n != null) {
+          logger.debug({ path, saldo: n }, "cdd: saldo obtido");
+          return n;
+        }
+      }
+    } catch {
+      /* tenta o próximo path */
+    } finally {
+      clearTimeout(timeout);
+    }
+  }
+  return null; // sem endpoint conhecido — a UI degrada pro link do portal
+}
+
 // ===== HTTP comum + erros acionáveis =====
 
 async function postJson(

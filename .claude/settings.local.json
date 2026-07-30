@@ -23,7 +23,8 @@
       "Read(//Users/guilhermeabiti/.ssh/**)",
       "Bash(curl -sL https://nodejs.org/dist/v20.18.1/node-v20.18.1-darwin-arm64.tar.gz -o node.tar.gz)",
       "Bash(tar xzf *)",
-      "Bash(./node-v20.18.1-darwin-arm64/bin/node --version)"
+      "Bash(./node-v20.18.1-darwin-arm64/bin/node --version)",
+      "WebSearch"
     ]
   }
 }

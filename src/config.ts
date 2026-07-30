@@ -104,6 +104,9 @@ const schema = z.object({
   CASADOSDADOS_BASE_URL: z.string().url().default("https://api.casadosdados.com.br"),
   CASADOSDADOS_SEARCH_PATH: z.string().default("/v2/public/cnpj/search"),
   CASADOSDADOS_API_KEY: z.string().optional(),
+  // Path do endpoint de saldo da conta (a doc logada da CDD informa o exato).
+  // Vazio = o sistema tenta os paths conhecidos automaticamente.
+  CASADOSDADOS_SALDO_PATH: z.string().optional(),
   // Enriquecimento por CNPJ (telefones/sócios/email) — minhareceita com
   // fallback OpenCNPJ, ambos gratuitos.
   MINHARECEITA_BASE_URL: z.string().url().default("https://minhareceita.org"),

@@ -32,12 +32,10 @@ import {
   MessageCircle,
   Mail,
   MapPin,
-  Coins,
   KeyRound,
 } from "lucide-react";
 
-type Credits = { balance: number; reserved: number };
-type Source = { configured: boolean; own_key: boolean; last4: string | null };
+type Source = { configured: boolean; own_key: boolean; last4: string | null; balance?: number | null };
 
 // Perfis de cliente ideal — preenchem o formulário com filtros prontos.
 const PRESETS = [
@@ -52,7 +50,6 @@ const PRESETS = [
 export function DiscoveryHub({ tenantSlug }: { tenantSlug: string }) {
   const router = useRouter();
   const [searches, setSearches] = useState<DiscoverySearch[]>([]);
-  const [credits, setCredits] = useState<Credits | null>(null);
   const [source, setSource] = useState<Source | null>(null);
   const [sourceOpen, setSourceOpen] = useState(false);
   const [loaded, setLoaded] = useState(false);
@@ -80,7 +77,6 @@ export function DiscoveryHub({ tenantSlug }: { tenantSlug: string }) {
       if (res.ok) {
         const data = await res.json();
         setSearches(data.searches ?? []);
-        if (data.credits) setCredits(data.credits);
         if (data.source) setSource(data.source);
       }
     } catch {
@@ -203,24 +199,11 @@ export function DiscoveryHub({ tenantSlug }: { tenantSlug: string }) {
       <div className="lg:col-span-1">
         <Card>
           <CardHeader>
-            <div className="flex items-center justify-between gap-2">
-              <h2 className="flex items-center gap-2 font-serif text-[15px] text-ink">
-                <Radar size={15} className="text-accent-bronze-soft" /> Nova busca
-              </h2>
-              {credits && (
-                <span
-                  title={credits.reserved > 0 ? `${credits.reserved} em uso` : "créditos disponíveis"}
-                  className="inline-flex items-center gap-1.5 rounded-full border border-accent-bronze/30 bg-accent-bronze/10 px-2.5 py-1 text-[12px] font-medium text-accent-bronze-soft"
-                >
-                  <Coins size={12} /> {credits.balance}
-                  {credits.reserved > 0 && (
-                    <span className="text-ink-faint">· {credits.reserved} em uso</span>
-                  )}
-                </span>
-              )}
-            </div>
+            <h2 className="flex items-center gap-2 font-serif text-[15px] text-ink">
+              <Radar size={15} className="text-accent-bronze-soft" /> Nova busca
+            </h2>
             <p className="mt-1 text-[11px] text-ink-muted">
-              1 crédito = 1 lead com telefone. Você só paga pelos leads com contato.
+              A busca usa a API de CNPJs contratada por você — o custo é direto na sua conta.
             </p>
             <button
               onClick={() => setSourceOpen(true)}
@@ -237,6 +220,9 @@ export function DiscoveryHub({ tenantSlug }: { tenantSlug: string }) {
                 : source?.configured
                   ? "Fonte: chave da plataforma"
                   : "Conectar fonte de dados"}
+              {source?.own_key && source.balance != null && (
+                <span className="text-ink-soft">· saldo: {source.balance.toLocaleString("pt-BR")}</span>
+              )}
             </button>
           </CardHeader>
           <CardBody className="space-y-4">
@@ -311,25 +297,12 @@ export function DiscoveryHub({ tenantSlug }: { tenantSlug: string }) {
               </div>
             </div>
 
-            {credits != null && credits.balance === 0 ? (
+            {source && !source.configured && (
               <div className="rounded-md border border-warning/30 bg-warning/10 px-3 py-2 text-center text-[11px] text-warning">
-                Sem créditos. Peça uma recarga ao administrador para rodar buscas.
+                Conecte a sua chave da Casa dos Dados acima pra rodar buscas.
               </div>
-            ) : (
-              credits != null &&
-              quantity > credits.balance && (
-                <p className="text-center text-[11px] text-warning">
-                  Seu saldo cobre {credits.balance} leads — a busca roda parcial e o resto volta pra conta.
-                </p>
-              )
             )}
-            <Button
-              variant="bronze"
-              className="w-full"
-              size="lg"
-              onClick={create}
-              disabled={busy || !name.trim() || (credits != null && credits.balance === 0)}
-            >
+            <Button variant="bronze" className="w-full" size="lg" onClick={create} disabled={busy || !name.trim()}>
               <Search size={14} /> {busy ? "Criando…" : "Buscar leads"}
             </Button>
             <p className="text-center text-[10px] leading-relaxed text-ink-faint">

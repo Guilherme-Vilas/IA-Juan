@@ -2,8 +2,8 @@ import type { FastifyInstance } from "fastify";
 import { config } from "../config.js";
 import { logger } from "../core/logger.js";
 import { pool } from "../core/db.js";
-import { requireSuperadmin } from "../auth/plugin.js";
-import { getCredits, listTransactions, topup, holdForSearch, releaseHold } from "../core/credits.js";
+import { redis } from "../core/redis.js";
+import { fetchSourceBalance } from "../discovery/providers/casadosdados.js";
 import { discoveryQueue, discoveryJobId } from "../workers/queues.js";
 import {
   createSearch,
@@ -56,23 +56,38 @@ export async function registerDiscoveryRoutes(app: FastifyInstance) {
     scope.addHook("preHandler", scope.requireTenant);
 
     scope.get("/admin/tenants/:slug/discovery", async (req) => {
-      const [searches, credits, keyRow] = await Promise.all([
+      const [searches, keyRow] = await Promise.all([
         listSearches(req.tenantId!),
-        getCredits(req.tenantId!),
         pool.query<{ casadosdados_api_key: string | null }>(
           `SELECT casadosdados_api_key FROM tenants WHERE id = $1`,
           [req.tenantId!],
         ),
       ]);
       const key = keyRow.rows[0]?.casadosdados_api_key?.trim() || null;
+
+      // Saldo REAL da conta Casa dos Dados do cliente (cache 2 min pra não
+      // martelar a API). null = endpoint de saldo indisponível — UI mostra
+      // o link do portal no lugar do número.
+      let balance: number | null = null;
+      if (key) {
+        const cacheKey = `cdd:saldo:${req.tenantId}`;
+        const cached = await redis.get(cacheKey);
+        if (cached != null) {
+          balance = cached === "null" ? null : Number(cached);
+        } else {
+          balance = await fetchSourceBalance(key);
+          await redis.set(cacheKey, balance == null ? "null" : String(balance), "EX", 120);
+        }
+      }
+
       return {
         searches,
-        credits,
         // nunca devolve a chave inteira — só status + final pra conferência
         source: {
           configured: !!key || !!config.CASADOSDADOS_API_KEY,
           own_key: !!key,
           last4: key ? key.slice(-4) : null,
+          balance,
         },
       };
     });
@@ -88,33 +103,11 @@ export async function registerDiscoveryRoutes(app: FastifyInstance) {
         key || null,
         req.tenantId!,
       ]);
+      await redis.del(`cdd:saldo:${req.tenantId}`).catch(() => undefined);
       const { invalidateTenantsCache } = await import("../core/tenants.js");
       await invalidateTenantsCache();
       logger.info({ tenant: req.tenantSlug, configured: !!key }, "discovery: chave da fonte atualizada");
       return reply.send({ ok: true, configured: !!key, last4: key ? key.slice(-4) : null });
-    });
-
-    // Saldo + extrato de créditos.
-    scope.get("/admin/tenants/:slug/credits", async (req) => {
-      const [credits, transactions] = await Promise.all([
-        getCredits(req.tenantId!),
-        listTransactions(req.tenantId!, 50),
-      ]);
-      return { credits, transactions };
-    });
-
-    // Recarga manual — SÓ superadmin.
-    scope.post("/admin/tenants/:slug/credits/topup", async (req, reply) => {
-      if (!requireSuperadmin(req, reply)) return;
-      const body = req.body as { amount?: number; reason?: string };
-      const amount = Number(body?.amount);
-      if (!Number.isInteger(amount) || amount <= 0) {
-        return reply.code(400).send({ error: "amount deve ser um inteiro positivo" });
-      }
-      const actor = req.auth?.kind === "user" ? `superadmin#${req.auth.userId}` : "service";
-      const total = await topup(req.tenantId!, amount, actor, body?.reason);
-      logger.info({ tenant: req.tenantSlug, amount, actor }, "credits: topup via admin");
-      return reply.send({ ok: true, balance: total });
     });
 
     scope.post("/admin/tenants/:slug/discovery", async (req, reply) => {
@@ -134,32 +127,24 @@ export async function registerDiscoveryRoutes(app: FastifyInstance) {
       if (!hasAnyFilter) {
         return reply.code(400).send({ error: "defina pelo menos um filtro (UF, cidade, CNAE, termo ou capital)" });
       }
+      // O custo é da conta Casa dos Dados do PRÓPRIO cliente (chave dele) —
+      // sem créditos internos, sem trava.
       const requested = Math.min(Math.max(10, Number(body.requested_count ?? 100)), config.DISCOVERY_MAX_RESULTS);
-
-      // Reserva créditos (1 = 1 lead com telefone). Entrega parcial: roda só o
-      // que o saldo cobrir. Saldo zero → bloqueia e pede recarga.
-      const hold = await holdForSearch(req.tenantId!, requested);
-      if (hold <= 0) {
-        return reply.code(402).send({ error: "sem créditos de prospecção — peça uma recarga ao administrador" });
-      }
 
       const search = await createSearch({
         tenant_id: req.tenantId!,
         name: body.name.trim(),
         filters,
-        requested_count: hold, // cap parcial pelo saldo
-        reserved_credits: hold,
+        requested_count: requested,
+        reserved_credits: 0,
       });
       await discoveryQueue.add(
         "run",
         { searchId: search.id },
         { jobId: discoveryJobId(search.id), removeOnComplete: true, removeOnFail: 20 },
       );
-      logger.info(
-        { tenant: req.tenantSlug, searchId: search.id, requested, reserved: hold, partial: hold < requested },
-        "discovery: busca criada",
-      );
-      return reply.send({ search, reserved: hold, partial: hold < requested });
+      logger.info({ tenant: req.tenantSlug, searchId: search.id, requested }, "discovery: busca criada");
+      return reply.send({ search });
     });
 
     scope.get("/admin/tenants/:slug/discovery/:id", async (req, reply) => {
@@ -176,19 +161,13 @@ export async function registerDiscoveryRoutes(app: FastifyInstance) {
       const search = await getSearchForTenant(req.tenantId!, id);
       if (!search) return reply.code(404).send({ error: "not found" });
       if (search.status !== "failed") return reply.code(409).send({ error: "só buscas com falha podem ser re-executadas" });
-      // A falha devolveu a reserva — re-reserva pra rodar de novo (entrega parcial).
-      const hold = await holdForSearch(req.tenantId!, search.requested_count);
-      if (hold <= 0) {
-        return reply.code(402).send({ error: "sem créditos de prospecção — peça uma recarga ao administrador" });
-      }
-      await updateSearch(id, { status: "queued", error_msg: null, charged_credits: null });
-      await pool.query(`UPDATE discovery_searches SET reserved_credits = $1, requested_count = $1 WHERE id = $2`, [hold, id]);
+      await updateSearch(id, { status: "queued", error_msg: null });
       await discoveryQueue
         .add("run", { searchId: id }, { jobId: discoveryJobId(id), removeOnComplete: true, removeOnFail: 20 })
         .catch(async (err) => {
           if (!String(err?.message ?? "").includes("already exists")) throw err;
         });
-      logger.info({ tenant: req.tenantSlug, searchId: id, reserved: hold }, "discovery: retry");
+      logger.info({ tenant: req.tenantSlug, searchId: id }, "discovery: retry");
       return reply.send({ ok: true });
     });
 
@@ -197,10 +176,6 @@ export async function registerDiscoveryRoutes(app: FastifyInstance) {
       const search = await getSearchForTenant(req.tenantId!, id);
       if (!search) return reply.code(404).send({ error: "not found" });
       if (search.status === "running") return reply.code(409).send({ error: "busca em andamento" });
-      // Busca em fila ainda segura a reserva (não rodou) — devolve ao saldo.
-      if (search.status === "queued" && search.charged_credits == null && search.reserved_credits > 0) {
-        await releaseHold(req.tenantId!, search.reserved_credits);
-      }
       await deleteSearch(req.tenantId!, id);
       return reply.send({ ok: true });
     });
