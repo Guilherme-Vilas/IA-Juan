@@ -156,7 +156,9 @@ export async function registerDemoRoutes(app: FastifyInstance) {
         suggestions: suggestionsFor(result.newState, lead.slots ?? {}, scenario),
         remaining,
         done: isDone(result.newState, remaining),
-        captureEnabled: !!config.DEMO_CAPTURE_INGEST_TOKEN,
+        // captura sempre disponível: e-mail vai pra base de marketing;
+        // WhatsApp vai pro pipeline quando o token de ingestão está configurado.
+        captureEnabled: true,
       });
     } catch (err) {
       logger.error({ err, waId }, "demo: start falhou");
@@ -220,23 +222,41 @@ export async function registerDemoRoutes(app: FastifyInstance) {
     }
   });
 
-  // Captura suave ao final: o visitante vira lead no tenant comercial da Vita OS.
+  // Captura suave ao final: o visitante vira lead no tenant comercial da
+  // Vita OS (WhatsApp) e/ou entra na base de e-mail marketing (e-mail).
   app.post("/demo/capture", async (req, reply) => {
-    if (!config.DEMO_CAPTURE_INGEST_TOKEN) return reply.code(503).send({ error: "captura desativada" });
-    const body = req.body as { sessionId?: string; name?: string; phone?: string };
+    const body = req.body as { sessionId?: string; name?: string; phone?: string; email?: string };
     const phone = (body?.phone ?? "").replace(/\D/g, "");
-    if (phone.length < 10) return reply.code(400).send({ error: "informe um WhatsApp válido com DDD" });
+    const email = (body?.email ?? "").trim();
+    const hasPhone = phone.length >= 10;
+    const hasEmail = email.includes("@");
+    if (!hasPhone && !hasEmail) {
+      return reply.code(400).send({ error: "informe um WhatsApp com DDD ou um e-mail" });
+    }
     const waId = (body?.sessionId ?? "").trim();
     const scenario = waId ? await redis.get(`demo:sess:${waId}`) : null;
 
-    const result = await ingestLead(config.DEMO_CAPTURE_INGEST_TOKEN, {
-      phone,
-      name: body?.name?.trim() || undefined,
-      source: "demo-landing",
-      utm: { origem: "demo-landing", cenario: scenario ?? "desconhecido" },
-    });
-    if (!result.ok) return reply.code(400).send({ error: result.error ?? "não foi possível registrar" });
-    logger.info({ phone: `${phone.slice(0, 4)}…`, scenario }, "demo: visitante capturado como lead");
+    // WhatsApp → pipeline do tenant comercial (se o token estiver configurado).
+    if (hasPhone && config.DEMO_CAPTURE_INGEST_TOKEN) {
+      const result = await ingestLead(config.DEMO_CAPTURE_INGEST_TOKEN, {
+        phone,
+        name: body?.name?.trim() || undefined,
+        source: "demo-landing",
+        utm: { origem: "demo-landing", cenario: scenario ?? "desconhecido" },
+      });
+      if (!result.ok) return reply.code(400).send({ error: result.error ?? "não foi possível registrar" });
+    }
+
+    // E-mail → base de marketing (best-effort, nunca derruba a captura).
+    if (hasEmail) {
+      const { subscribeContact } = await import("./marketing.js");
+      await subscribeContact(email, body?.name ?? null, "demo-landing").catch(() => undefined);
+    }
+
+    logger.info(
+      { phone: hasPhone ? `${phone.slice(0, 4)}…` : null, email: hasEmail, scenario },
+      "demo: visitante capturado",
+    );
     return reply.send({ ok: true });
   });
 }

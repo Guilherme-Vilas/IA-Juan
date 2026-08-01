@@ -1,8 +1,9 @@
 import crypto from "node:crypto";
-import type { FastifyInstance } from "fastify";
+import type { FastifyInstance, FastifyRequest } from "fastify";
 import { config } from "../config.js";
 import { logger } from "../core/logger.js";
 import { pool } from "../core/db.js";
+import { redis } from "../core/redis.js";
 import { requireSuperadmin } from "../auth/plugin.js";
 import { emailEnabled, renderEmail, sendEmail } from "../core/email.js";
 import { marketingQueue, marketingJobId } from "../workers/queues.js";
@@ -75,7 +76,59 @@ export function renderCampaignEmail(c: Pick<MktCampaignRow, "title" | "body_text
   return base.replace("</body>", `${unsubHtml}</body>`);
 }
 
+// Inscrição na base (landing, demo, futuras fontes). Quem se inscreve de novo
+// após descadastro é RE-inscrito — é consentimento explícito e renovado.
+export async function subscribeContact(
+  email: string,
+  name: string | null,
+  source: string,
+): Promise<"added" | "resubscribed" | "exists" | "invalid"> {
+  const clean = email.trim().toLowerCase();
+  if (!isValidEmail(clean) || clean.length > 200) return "invalid";
+  const { rows } = await pool.query<{ inserted: boolean; was_subscribed: boolean }>(
+    `INSERT INTO marketing_contacts (email, name, source, unsubscribe_token)
+     VALUES ($1,$2,$3,$4)
+     ON CONFLICT (lower(email)) DO UPDATE
+       SET subscribed = true,
+           unsubscribed_at = NULL,
+           name = COALESCE(marketing_contacts.name, EXCLUDED.name)
+     RETURNING (xmax = 0) AS inserted, subscribed AS was_subscribed`,
+    [clean, name?.trim()?.slice(0, 120) || null, source, crypto.randomBytes(18).toString("base64url")],
+  );
+  const r = rows[0];
+  if (!r) return "invalid";
+  if (r.inserted) return "added";
+  return "resubscribed";
+}
+
+function publicIp(req: FastifyRequest): string {
+  const fwd = req.headers["x-forwarded-for"];
+  if (typeof fwd === "string" && fwd.length > 0) return fwd.split(",")[0]!.trim();
+  return req.ip;
+}
+
 export async function registerMarketingRoutes(app: FastifyInstance) {
+  // ===== Inscrição pública (captura da landing) =====
+  app.post("/mkt/subscribe", async (req, reply) => {
+    const body = req.body as { email?: string; name?: string; source?: string; website?: string };
+    // honeypot: bot que preenche o campo invisível é ignorado em silêncio
+    if (body?.website) return reply.send({ ok: true });
+
+    const ip = publicIp(req);
+    const hits = await redis.incr(`mkt:sub:${ip}`);
+    await redis.expire(`mkt:sub:${ip}`, 86_400);
+    if (hits > 15) return reply.code(429).send({ error: "muitas tentativas — tente amanhã" });
+
+    const result = await subscribeContact(
+      body?.email ?? "",
+      body?.name ?? null,
+      (body?.source ?? "landing").slice(0, 40),
+    );
+    if (result === "invalid") return reply.code(400).send({ error: "informe um e-mail válido" });
+    logger.info({ result, source: body?.source }, "mkt: inscrição pela landing");
+    return reply.send({ ok: true });
+  });
+
   // ===== Descadastro público de 1 clique =====
   app.get("/mkt/unsubscribe/:token", async (req, reply) => {
     const { token } = req.params as { token: string };

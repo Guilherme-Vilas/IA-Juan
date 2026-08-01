@@ -592,9 +592,13 @@ function ScoreRing({ value, label }: { value: number; label: string }) {
 function CaptureForm({ sessionId }: { sessionId: string }) {
   const [name, setName] = useState("");
   const [phone, setPhone] = useState("");
+  const [email, setEmail] = useState("");
   const [sent, setSent] = useState(false);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+
+  const hasPhone = phone.replace(/\D/g, "").length >= 10;
+  const hasEmail = email.includes("@");
 
   const submit = async () => {
     setBusy(true);
@@ -603,12 +607,12 @@ function CaptureForm({ sessionId }: { sessionId: string }) {
       const res = await fetch("/api/demo/capture", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ sessionId, name, phone }),
+        body: JSON.stringify({ sessionId, name, phone, email }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data?.error ?? "erro");
       setSent(true);
-      track("demo_capture");
+      track("demo_capture", { whatsapp: hasPhone, email: hasEmail });
     } catch (e) {
       setErr(String(e instanceof Error ? e.message : e));
     } finally {
@@ -619,36 +623,47 @@ function CaptureForm({ sessionId }: { sessionId: string }) {
   if (sent) {
     return (
       <p className="mt-3 flex items-center justify-center gap-2 text-[13px] text-success">
-        <MessageCircle size={14} /> Fechou! A gente te chama no WhatsApp. 👊
+        <MessageCircle size={14} /> Fechou! {hasPhone ? "A gente te chama no WhatsApp." : "Fica de olho no seu e-mail."}
       </p>
     );
   }
   return (
     <div className="mt-3 space-y-2">
-      <p className="text-[12px] text-ink-muted">Quer isso no seu negócio? Deixa seu WhatsApp que a gente te chama:</p>
-      <div className="flex flex-col gap-2 sm:flex-row">
+      <p className="text-[12px] text-ink-muted">
+        Quer isso no seu negócio? Deixa seu contato — WhatsApp, e-mail, ou os dois:
+      </p>
+      <div className="grid gap-2 sm:grid-cols-3">
         <input
           value={name}
           onChange={(e) => setName(e.target.value)}
           placeholder="Seu nome"
-          className="flex-1 rounded-md border border-line bg-canvas-deep px-3 py-2 text-[13px] text-ink placeholder:text-ink-faint focus:border-accent-bronze/50 focus:outline-none"
+          className="rounded-md border border-line bg-canvas-deep px-3 py-2 text-[13px] text-ink placeholder:text-ink-faint focus:border-accent-bronze/50 focus:outline-none"
         />
         <input
           value={phone}
           onChange={(e) => setPhone(e.target.value)}
           placeholder="WhatsApp com DDD"
           inputMode="tel"
-          className="flex-1 rounded-md border border-line bg-canvas-deep px-3 py-2 text-[13px] text-ink placeholder:text-ink-faint focus:border-accent-bronze/50 focus:outline-none"
+          className="rounded-md border border-line bg-canvas-deep px-3 py-2 text-[13px] text-ink placeholder:text-ink-faint focus:border-accent-bronze/50 focus:outline-none"
         />
+        <input
+          type="email"
+          value={email}
+          onChange={(e) => setEmail(e.target.value)}
+          placeholder="E-mail"
+          className="rounded-md border border-line bg-canvas-deep px-3 py-2 text-[13px] text-ink placeholder:text-ink-faint focus:border-accent-bronze/50 focus:outline-none"
+        />
+      </div>
+      <div className="flex items-center justify-center gap-3">
         <button
           onClick={submit}
-          disabled={busy || phone.replace(/\D/g, "").length < 10}
-          className="shine rounded-md bg-bronze-metal px-4 py-2 text-[13px] font-semibold text-ink-inverse disabled:opacity-40"
+          disabled={busy || (!hasPhone && !hasEmail)}
+          className="shine rounded-md bg-bronze-metal px-5 py-2 text-[13px] font-semibold text-ink-inverse disabled:opacity-40"
         >
-          {busy ? "Enviando…" : "Me chama"}
+          {busy ? "Enviando…" : "Quero saber mais"}
         </button>
       </div>
-      {err && <p className="text-[11px] text-danger">{err}</p>}
+      {err && <p className="text-center text-[11px] text-danger">{err}</p>}
     </div>
   );
 }

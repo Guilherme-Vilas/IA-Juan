@@ -6,6 +6,7 @@ import { ProductPreview } from "@/components/product-preview";
 import { AgentDemo } from "@/components/agent-demo";
 import { Segments } from "@/components/segments";
 import { Faq } from "@/components/faq";
+import { EmailCapture } from "@/components/email-capture";
 import { CtaFooter } from "@/components/cta-footer";
 import { WhatsappFab } from "@/components/whatsapp-fab";
 
@@ -20,6 +21,7 @@ export default function Home() {
       <AgentDemo />
       <Segments />
       <Faq />
+      <EmailCapture />
       <CtaFooter />
       <WhatsappFab />
     </main>
