@@ -103,6 +103,15 @@ export async function createUserStrict(input: {
   }
 }
 
+// Troca de senha (fluxo "esqueci minha senha" com código por e-mail).
+export async function setUserPasswordByEmail(email: string, password: string): Promise<boolean> {
+  const { rowCount } = await pool.query(
+    `UPDATE users SET password_hash = $1 WHERE lower(email) = lower($2) AND active = true`,
+    [hashPassword(password), email],
+  );
+  return (rowCount ?? 0) > 0;
+}
+
 export async function linkUserToTenant(userId: number, tenantId: number, role: TenantRole = "owner") {
   await pool.query(
     `INSERT INTO user_tenants (user_id, tenant_id, role)

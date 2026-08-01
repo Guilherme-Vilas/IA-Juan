@@ -1,6 +1,8 @@
-import type { FastifyInstance } from "fastify";
+import crypto from "node:crypto";
+import type { FastifyInstance, FastifyRequest } from "fastify";
 import { logger } from "../core/logger.js";
 import { pool } from "../core/db.js";
+import { redis } from "../core/redis.js";
 import {
   createUser,
   getUserByEmail,
@@ -8,11 +10,21 @@ import {
   linkUserToTenant,
   listUsers,
   listUserTenants,
+  setUserPasswordByEmail,
   verifyPassword,
   type TenantRole,
 } from "../core/users.js";
 import { getTenantBySlug } from "../core/tenants.js";
 import { requireSuperadmin } from "../auth/plugin.js";
+import { emailEnabled, sendResetCodeEmail, sendWelcomeEmail } from "../core/email.js";
+
+function clientIp(req: FastifyRequest): string {
+  const fwd = req.headers["x-forwarded-for"];
+  if (typeof fwd === "string" && fwd.length > 0) return fwd.split(",")[0]!.trim();
+  return req.ip;
+}
+
+const sha256 = (s: string) => crypto.createHash("sha256").update(s).digest("hex");
 
 export async function registerAuthRoutes(app: FastifyInstance) {
   // ===== Login: email + senha -> JWT =====
@@ -35,6 +47,69 @@ export async function registerAuthRoutes(app: FastifyInstance) {
       user: { id: user.id, email: user.email, name: user.name, is_superadmin: user.is_superadmin },
       tenants,
     };
+  });
+
+  // ===== Esqueci minha senha: envia CÓDIGO de acesso por e-mail =====
+  // Sempre responde ok (sem revelar se o e-mail existe). Rate limit por
+  // e-mail e por IP. Código de 6 dígitos, hash no Redis, validade 15 min.
+  app.post("/auth/forgot-password", async (req, reply) => {
+    const email = String((req.body as { email?: string })?.email ?? "").trim().toLowerCase();
+    if (!email || !email.includes("@")) return reply.code(400).send({ error: "e-mail inválido" });
+    if (!emailEnabled()) {
+      return reply.code(503).send({ error: "recuperação por e-mail indisponível — fale com o suporte" });
+    }
+
+    const ip = clientIp(req);
+    const [perEmail, perIp] = await Promise.all([
+      redis.incr(`pwreset:req:${email}`),
+      redis.incr(`pwreset:ip:${ip}`),
+    ]);
+    await Promise.all([redis.expire(`pwreset:req:${email}`, 3_600), redis.expire(`pwreset:ip:${ip}`, 3_600)]);
+    if (perEmail > 3 || perIp > 10) {
+      return reply.code(429).send({ error: "muitas tentativas — aguarde uma hora e tente de novo" });
+    }
+
+    const user = await getUserByEmail(email);
+    if (user && user.active) {
+      const code = String(crypto.randomInt(100_000, 1_000_000));
+      await redis.set(`pwreset:code:${email}`, sha256(code), "EX", 900);
+      await redis.del(`pwreset:tries:${email}`);
+      sendResetCodeEmail(email, code).catch((err) =>
+        logger.error({ err, email }, "auth: envio do código de acesso falhou"),
+      );
+      logger.info({ email }, "auth: código de acesso gerado");
+    }
+    // resposta idêntica com ou sem conta — sem enumeração de e-mails
+    return { ok: true };
+  });
+
+  // ===== Redefinir senha com o código =====
+  app.post("/auth/reset-password", async (req, reply) => {
+    const body = req.body as { email?: string; code?: string; password?: string };
+    const email = String(body?.email ?? "").trim().toLowerCase();
+    const code = String(body?.code ?? "").replace(/\D/g, "");
+    const password = body?.password ?? "";
+    if (!email || code.length !== 6) return reply.code(400).send({ error: "código inválido" });
+    if (password.length < 8) return reply.code(400).send({ error: "a senha precisa ter no mínimo 8 caracteres" });
+
+    // máx 5 tentativas por código — depois invalida
+    const tries = await redis.incr(`pwreset:tries:${email}`);
+    await redis.expire(`pwreset:tries:${email}`, 900);
+    if (tries > 5) {
+      await redis.del(`pwreset:code:${email}`);
+      return reply.code(429).send({ error: "muitas tentativas — peça um novo código" });
+    }
+
+    const stored = await redis.get(`pwreset:code:${email}`);
+    if (!stored || stored !== sha256(code)) {
+      return reply.code(400).send({ error: "código incorreto ou expirado" });
+    }
+
+    const changed = await setUserPasswordByEmail(email, password);
+    if (!changed) return reply.code(400).send({ error: "código incorreto ou expirado" });
+    await Promise.all([redis.del(`pwreset:code:${email}`), redis.del(`pwreset:tries:${email}`)]);
+    logger.info({ email }, "auth: senha redefinida via código");
+    return { ok: true };
   });
 
   // ===== Quem sou eu (+ tenants que acesso) =====
@@ -88,6 +163,10 @@ export async function registerAuthRoutes(app: FastifyInstance) {
       await linkUserToTenant(user.id, tenant.id, body.role ?? "owner");
     }
     logger.info({ userId: user.id, by: req.auth }, "auth: user created");
+    // Boas-vindas por e-mail (best-effort — a criação nunca falha por causa disso).
+    sendWelcomeEmail(user.email, user.name).catch((err) =>
+      logger.warn({ err, email: user.email }, "auth: e-mail de boas-vindas falhou"),
+    );
     return { user: { id: user.id, email: user.email, name: user.name, is_superadmin: user.is_superadmin } };
   });
 

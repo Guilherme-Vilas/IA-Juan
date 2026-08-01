@@ -11,6 +11,7 @@ import {
   type InviteType,
 } from "../core/invites.js";
 import type { TenantRole } from "../core/users.js";
+import { emailEnabled, sendInviteEmail } from "../core/email.js";
 
 export async function registerInviteRoutes(app: FastifyInstance) {
   // ============== Superadmin: gestao de convites ==============
@@ -47,11 +48,22 @@ export async function registerInviteRoutes(app: FastifyInstance) {
           created_by,
           ttl_days: body.ttl_days,
         });
+        // Se o convite tem e-mail e o Resend está configurado, o link vai
+        // direto pra caixa de entrada do convidado (best-effort).
+        let emailSent = false;
+        if (body.email?.trim() && emailEnabled()) {
+          await sendInviteEmail(body.email.trim(), url, body.note)
+            .then(() => {
+              emailSent = true;
+            })
+            .catch((err) => logger.warn({ err, email: body.email }, "invite: envio de e-mail falhou"));
+        }
         return reply.code(201).send({
           id: invite.id,
           token,
           url,
           expires_at: new Date(invite.expires_at).toISOString(),
+          email_sent: emailSent,
         });
       } catch (err) {
         return reply.code(400).send({ error: String(err instanceof Error ? err.message : err) });

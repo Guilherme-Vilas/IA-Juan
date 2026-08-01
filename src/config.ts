@@ -92,6 +92,14 @@ const schema = z.object({
   // bloqueado por Cloudflare (jul/2026) — a API oficial exige chave (R$0,01/
   // consulta, portal.casadosdados.com.br). Base/path configuráveis pra seguir
   // a doc da conta sem mudar código.
+  // E-mail transacional via Resend (códigos de acesso, convites, boas-vindas).
+  // Sem RESEND_API_KEY, os recursos de e-mail ficam desligados com elegância.
+  RESEND_API_KEY: z.string().optional(),
+  RESEND_BASE_URL: z.string().url().default("https://api.resend.com"),
+  // Remetente — o domínio precisa estar verificado no painel do Resend.
+  EMAIL_FROM: z.string().default("Vita OS <nao-responda@systemvita.com.br>"),
+  EMAIL_REPLY_TO: z.string().optional(),
+
   // Demo pública da landing (Stella real, sessões efêmeras, sem WhatsApp).
   DEMO_TENANT_SLUG: z.string().default("demo"),
   DEMO_MAX_MESSAGES: z.coerce.number().default(14),
