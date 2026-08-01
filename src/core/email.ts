@@ -19,6 +19,7 @@ export async function sendEmail(input: {
   subject: string;
   html: string;
   replyTo?: string;
+  headers?: Record<string, string>;
 }): Promise<void> {
   if (!emailEnabled()) {
     logger.debug({ to: input.to, subject: input.subject }, "email suprimido (RESEND_API_KEY ausente)");
@@ -41,6 +42,7 @@ export async function sendEmail(input: {
         ...(input.replyTo || config.EMAIL_REPLY_TO
           ? { reply_to: input.replyTo ?? config.EMAIL_REPLY_TO }
           : {}),
+        ...(input.headers ? { headers: input.headers } : {}),
       }),
       signal: ctrl.signal,
     });

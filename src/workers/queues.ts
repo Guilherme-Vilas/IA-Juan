@@ -36,15 +36,25 @@ export type DiscoveryJob = {
   searchId: number;
 };
 
+// E-mail marketing interno (superadmin): disparo de campanha em fila.
+export type MarketingJob = {
+  campaignId: number;
+};
+
 export const inboundQueue = new Queue<InboundJob>("inbound", bullConnection);
 export const followupQueue = new Queue<FollowupJob>("followup", bullConnection);
 export const prospectSendQueue = new Queue<ProspectSendJob>("prospect-send", bullConnection);
 export const prospectTickQueue = new Queue<ProspectTickJob>("prospect-tick", bullConnection);
 export const retryTurnQueue = new Queue<RetryTurnJob>("retry-turn", bullConnection);
 export const discoveryQueue = new Queue<DiscoveryJob>("discovery", bullConnection);
+export const marketingQueue = new Queue<MarketingJob>("marketing", bullConnection);
 
 export function discoveryJobId(searchId: number): string {
   return `discovery-${searchId}`;
+}
+
+export function marketingJobId(campaignId: number): string {
+  return `marketing-${campaignId}`;
 }
 
 // Registra o repeatable job do tick. Chamar uma vez no boot do processo de workers.

@@ -15,6 +15,7 @@ async function main() {
   await import("./workers/prospect.worker.js");
   await import("./workers/retry.worker.js");
   await import("./workers/discovery.worker.js");
+  await import("./workers/marketing.worker.js");
 
   // Agenda o tick de prospeccao como repeatable job (idempotente entre replicas).
   await ensureProspectTickScheduled(config.PROSPECT_TICK_MS);

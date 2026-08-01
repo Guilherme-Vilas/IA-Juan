@@ -21,6 +21,7 @@ import {
   LogOut,
   Radar,
   GraduationCap,
+  Megaphone,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { LogoMark } from "@/components/ui/logo";
@@ -67,6 +68,7 @@ const groups: NavGroup[] = [
       { href: "/tenants", label: "Instâncias", icon: Server, superadmin: true },
       { href: "/users", label: "Usuários", icon: Users, superadmin: true },
       { href: "/invites", label: "Convites", icon: Ticket, superadmin: true },
+      { href: "/marketing", label: "Marketing", icon: Megaphone, superadmin: true },
       { href: "/playbooks", label: "Playbooks", icon: BookOpen },
       { href: "/training", label: "Treinamentos", icon: GraduationCap, training: true },
       { href: "/settings", label: "Configurações", icon: Settings },
