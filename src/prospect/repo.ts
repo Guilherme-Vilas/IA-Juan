@@ -112,6 +112,34 @@ export async function listCampaigns(tenantId: number): Promise<CampaignRow[]> {
   return rows;
 }
 
+// Números-resumo por campanha (lista) — 2 queries agregadas pro tenant inteiro.
+export type CampaignStats = { prospects: number; sends: number; replies: number };
+
+export async function getCampaignsStats(tenantId: number): Promise<Map<number, CampaignStats>> {
+  const [p, s] = await Promise.all([
+    pool.query<{ campaign_id: number; total: string; replies: string }>(
+      `SELECT campaign_id, COUNT(*)::text AS total, COUNT(replied_at)::text AS replies
+         FROM prospects WHERE tenant_id = $1 GROUP BY campaign_id`,
+      [tenantId],
+    ),
+    pool.query<{ campaign_id: number; sends: string }>(
+      `SELECT campaign_id, COUNT(*)::text AS sends
+         FROM prospect_sends WHERE tenant_id = $1 GROUP BY campaign_id`,
+      [tenantId],
+    ),
+  ]);
+  const map = new Map<number, CampaignStats>();
+  for (const r of p.rows) {
+    map.set(Number(r.campaign_id), { prospects: Number(r.total), replies: Number(r.replies), sends: 0 });
+  }
+  for (const r of s.rows) {
+    const cur = map.get(Number(r.campaign_id)) ?? { prospects: 0, replies: 0, sends: 0 };
+    cur.sends = Number(r.sends);
+    map.set(Number(r.campaign_id), cur);
+  }
+  return map;
+}
+
 // Listagem global — usada pelo dispatcher tick que precisa varrer todas as campanhas em running.
 export async function listAllRunningCampaigns(): Promise<CampaignRow[]> {
   const { rows } = await pool.query<CampaignRow>(

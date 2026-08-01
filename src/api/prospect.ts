@@ -8,6 +8,7 @@ import {
   deleteCampaign,
   getCampaign,
   getCampaignMetrics,
+  getCampaignsStats,
   getProspect,
   insertProspects,
   listCampaigns,
@@ -69,7 +70,16 @@ export async function registerProspectRoutes(app: FastifyInstance) {
     scope.addHook("preHandler", scope.requireTenant);
 
     scope.get("/admin/tenants/:slug/campaigns", async (req) => {
-      return { campaigns: await listCampaigns(req.tenantId!) };
+      const [campaigns, stats] = await Promise.all([
+        listCampaigns(req.tenantId!),
+        getCampaignsStats(req.tenantId!),
+      ]);
+      return {
+        campaigns: campaigns.map((c) => ({
+          ...c,
+          stats: stats.get(c.id) ?? { prospects: 0, sends: 0, replies: 0 },
+        })),
+      };
     });
 
     scope.post("/admin/tenants/:slug/campaigns", async (req, reply) => {

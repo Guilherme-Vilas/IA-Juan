@@ -1,8 +1,9 @@
-import { upsertLead, type Slots } from "../core/db.js";
+import { upsertLead, logMessage, type Slots } from "../core/db.js";
 import { logger } from "../core/logger.js";
 import { sendText } from "../core/evolution.js";
 import type { TenantRow } from "../core/tenants.js";
 import { findProspectByExternalId, updateProspect, logProspectEvent } from "./repo.js";
+import { listSendTexts } from "./steps.js";
 import { addToBlacklist, detectOptOut, OPTOUT_CONFIRMATION } from "./suppression.js";
 import { classifyReply } from "./classify.js";
 
@@ -43,6 +44,13 @@ export async function handleProspectReply(
     source: `campaign:${prospect.campaign_id}`,
     slots,
   });
+
+  // Contexto pro corretor: as abordagens que enviamos entram na Conversa do
+  // lead ANTES da resposta dele (o webhook loga a resposta depois deste handoff).
+  const sends = await listSendTexts(prospect.id).catch(() => [] as string[]);
+  for (const text of sends) {
+    await logMessage(lead.id, "out", "assistant", text).catch(() => undefined);
+  }
 
   await updateProspect(prospect.id, {
     status: "replied",

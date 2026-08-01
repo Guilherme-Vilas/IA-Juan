@@ -57,12 +57,22 @@ const sendWorker = new Worker<ProspectSendJob>(
       return;
     }
 
-    // Cadência: o passo deste toque é current_step+1. Campanha sem passos
-    // (não deveria existir pós-migration) cai no template legado da campanha.
+    // Cadência: o passo deste toque é current_step+1.
     const steps = await listSteps(campaign.id);
     const stepNumber = prospect.current_step + 1;
     const step = steps.find((s) => s.position === stepNumber) ?? null;
     const nextStep = steps.find((s) => s.position === stepNumber + 1) ?? null;
+
+    // Cadência foi ENCURTADA com este prospect no meio dela: o passo que ele
+    // aguardava não existe mais. Encerra sem re-enviar nada (re-mandar o
+    // template base seria mensagem duplicada pro lead).
+    if (!step && prospect.current_step > 0) {
+      await updateProspect(prospect.id, { status: "sent", next_step_at: null });
+      await logProspectEvent(prospect.id, "cadence_ended", { reason: "passo removido da cadência" });
+      logger.info({ tenant: tenant.slug, prospectId, step: stepNumber }, "cadência encurtada — prospect encerrado");
+      return;
+    }
+
     const chosen = step
       ? pickVariant(step)
       : { variantId: null, label: "A", template: campaign.template_text };

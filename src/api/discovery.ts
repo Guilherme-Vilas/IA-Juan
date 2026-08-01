@@ -26,6 +26,13 @@ const DEFAULT_TEMPLATE =
   "Oi {{primeiro_nome}}, tudo bem? Vi que você está à frente da {{empresa}}. " +
   "Trabalho com estratégia patrimonial pra empresários — posso te mandar 2 informações rápidas?";
 
+// A campanha exportada já nasce com cadência completa (follow-up é o maior
+// multiplicador de resposta) — o usuário edita os textos se quiser.
+const DEFAULT_FOLLOWUP_1 =
+  "Oi {{primeiro_nome}}, sei que a rotina aí na {{empresa}} não é fácil. Só passando pra saber se viu minha mensagem — faz sentido conversarmos?";
+const DEFAULT_FOLLOWUP_2 =
+  "{{primeiro_nome}}, última mensagem pra não incomodar: se planejamento patrimonial não é prioridade agora, tudo certo. Se for, me dá um alô que te mostro em 2 minutos como funciona.";
+
 function parseFilters(raw: Record<string, unknown> | undefined): CnpjSearchFilters {
   const asList = (v: unknown): string[] | undefined => {
     if (Array.isArray(v)) return v.map(String).map((s) => s.trim()).filter(Boolean);
@@ -209,6 +216,8 @@ export async function registerDiscoveryRoutes(app: FastifyInstance) {
       });
       await replaceSteps(campaign.id, [
         { wait_hours: 0, template_text: body.template_text?.trim() || DEFAULT_TEMPLATE },
+        { wait_hours: 48, template_text: DEFAULT_FOLLOWUP_1 },
+        { wait_hours: 72, template_text: DEFAULT_FOLLOWUP_2 },
       ]);
 
       const inputs: ProspectInput[] = leads.map((l) => ({

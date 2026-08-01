@@ -132,6 +132,16 @@ export async function recordSend(input: {
   );
 }
 
+// Textos das abordagens já enviadas a um prospect (ordem cronológica) —
+// usados pra dar contexto ao corretor quando o prospect vira lead.
+export async function listSendTexts(prospectId: number): Promise<string[]> {
+  const { rows } = await pool.query<{ message_text: string }>(
+    `SELECT message_text FROM prospect_sends WHERE prospect_id = $1 ORDER BY sent_at ASC, id ASC`,
+    [prospectId],
+  );
+  return rows.map((r) => r.message_text).filter(Boolean);
+}
+
 // ===== Funil da campanha =====
 
 export type FunnelCell = {

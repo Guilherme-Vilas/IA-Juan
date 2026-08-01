@@ -30,9 +30,11 @@ export async function refineWithAi(
 Regras OBRIGATÓRIAS:
 - NÃO invente fatos sobre a pessoa, empresa ou cargo que não estejam no contexto.
 - NÃO mude o significado nem o pedido principal da mensagem.
-- Ajuste apenas tom (${campaign.tone}), fluência e naturalidade.
-- Máximo 2 frases curtas. Sem emojis a menos que já tenha no original.
-- Use o primeiro nome se disponível. NÃO use "prezado" nem "caro".
+- Ajuste apenas tom (${campaign.tone}), fluência e naturalidade — escreva como uma PESSOA de vendas escreve no WhatsApp, não como assistente.
+- Mantenha o tamanho parecido com o original (nunca mais longo). Preserve as quebras de parágrafo (linha em branca) se existirem.
+- Sem emojis, a menos que o original já tenha.
+- PROIBIDO linguajar de atendente/IA: nada de "prezado", "caro", "Espero que esteja bem", "Gostaria de", "Venho por meio desta".
+- Use o primeiro nome se disponível.
 - Responda APENAS com a mensagem reescrita, sem comentário nem aspas.`;
 
   const ctx = [
@@ -49,7 +51,7 @@ Regras OBRIGATÓRIAS:
     const res = await chat({
       model: "fast",
       temperature: 0.5,
-      maxTokens: 200,
+      maxTokens: 350,
       messages: [
         { role: "system", content: sys },
         { role: "user", content: user },
