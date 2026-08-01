@@ -5,7 +5,13 @@ import { logger } from "../core/logger.js";
 import { pool } from "../core/db.js";
 import { redis } from "../core/redis.js";
 import { requireSuperadmin } from "../auth/plugin.js";
-import { emailEnabled, renderEmail, sendEmail } from "../core/email.js";
+import {
+  emailEnabled,
+  renderEmail,
+  sendEmail,
+  sendDiagnosticoConfirmEmail,
+  sendSubscribeConfirmEmail,
+} from "../core/email.js";
 import { marketingQueue, marketingJobId } from "../workers/queues.js";
 
 // ============================================================================
@@ -82,23 +88,22 @@ export async function subscribeContact(
   email: string,
   name: string | null,
   source: string,
-): Promise<"added" | "resubscribed" | "exists" | "invalid"> {
+): Promise<{ status: "added" | "resubscribed" | "invalid"; token: string | null }> {
   const clean = email.trim().toLowerCase();
-  if (!isValidEmail(clean) || clean.length > 200) return "invalid";
-  const { rows } = await pool.query<{ inserted: boolean; was_subscribed: boolean }>(
+  if (!isValidEmail(clean) || clean.length > 200) return { status: "invalid", token: null };
+  const { rows } = await pool.query<{ inserted: boolean; unsubscribe_token: string }>(
     `INSERT INTO marketing_contacts (email, name, source, unsubscribe_token)
      VALUES ($1,$2,$3,$4)
      ON CONFLICT (lower(email)) DO UPDATE
        SET subscribed = true,
            unsubscribed_at = NULL,
            name = COALESCE(marketing_contacts.name, EXCLUDED.name)
-     RETURNING (xmax = 0) AS inserted, subscribed AS was_subscribed`,
+     RETURNING (xmax = 0) AS inserted, unsubscribe_token`,
     [clean, name?.trim()?.slice(0, 120) || null, source, crypto.randomBytes(18).toString("base64url")],
   );
   const r = rows[0];
-  if (!r) return "invalid";
-  if (r.inserted) return "added";
-  return "resubscribed";
+  if (!r) return { status: "invalid", token: null };
+  return { status: r.inserted ? "added" : "resubscribed", token: r.unsubscribe_token };
 }
 
 function publicIp(req: FastifyRequest): string {
@@ -124,8 +129,93 @@ export async function registerMarketingRoutes(app: FastifyInstance) {
       body?.name ?? null,
       (body?.source ?? "landing").slice(0, 40),
     );
-    if (result === "invalid") return reply.code(400).send({ error: "informe um e-mail válido" });
-    logger.info({ result, source: body?.source }, "mkt: inscrição pela landing");
+    if (result.status === "invalid") return reply.code(400).send({ error: "informe um e-mail válido" });
+
+    // Confirmação de inscrição (best-effort) — com descadastro de 1 clique.
+    if (result.token) {
+      sendSubscribeConfirmEmail((body!.email as string).trim(), unsubscribeUrl(result.token)).catch((err) =>
+        logger.warn({ err }, "mkt: confirmação de inscrição falhou"),
+      );
+    }
+    logger.info({ result: result.status, source: body?.source }, "mkt: inscrição pela landing");
+    return reply.send({ ok: true });
+  });
+
+  // ===== Diagnóstico comercial gratuito (lead magnet da landing) =====
+  app.post("/mkt/diagnostico", async (req, reply) => {
+    const b = req.body as {
+      name?: string;
+      email?: string;
+      phone?: string;
+      sector?: string;
+      company_size?: string;
+      leads_per_month?: string;
+      response_time?: string;
+      main_challenge?: string;
+      website?: string; // honeypot
+    };
+    if (b?.website) return reply.send({ ok: true });
+
+    const ip = publicIp(req);
+    const hits = await redis.incr(`mkt:diag:${ip}`);
+    await redis.expire(`mkt:diag:${ip}`, 86_400);
+    if (hits > 5) return reply.code(429).send({ error: "muitas tentativas — tente amanhã" });
+
+    const name = (b?.name ?? "").trim().slice(0, 120);
+    const email = (b?.email ?? "").trim();
+    const phone = (b?.phone ?? "").replace(/\D/g, "");
+    if (!name || !isValidEmail(email)) {
+      return reply.code(400).send({ error: "nome e e-mail válidos são obrigatórios" });
+    }
+    const answers = {
+      setor: (b?.sector ?? "").slice(0, 60),
+      tamanho_empresa: (b?.company_size ?? "").slice(0, 40),
+      leads_por_mes: (b?.leads_per_month ?? "").slice(0, 40),
+      tempo_resposta: (b?.response_time ?? "").slice(0, 60),
+      maior_gargalo: (b?.main_challenge ?? "").slice(0, 300),
+    };
+
+    // 1. entra na base de nutrição
+    const sub = await subscribeContact(email, name, "diagnostico");
+
+    // 2. vira lead no pipeline comercial (quando o token de ingestão existe)
+    if (phone.length >= 10 && config.DEMO_CAPTURE_INGEST_TOKEN) {
+      const { ingestLead } = await import("../core/ingest.js");
+      await ingestLead(config.DEMO_CAPTURE_INGEST_TOKEN, {
+        phone,
+        name,
+        source: "diagnostico",
+        utm: { origem: "diagnostico-landing", ...answers },
+      }).catch((err) => logger.warn({ err }, "diagnostico: ingest falhou"));
+    }
+
+    // 3. notifica a equipe com as respostas completas
+    sendEmail({
+      to: "contato@systemvita.com.br",
+      subject: `🔍 Novo diagnóstico: ${name}${answers.setor ? ` (${answers.setor})` : ""}`,
+      html: renderEmail({
+        title: "Novo pedido de diagnóstico comercial",
+        bodyHtml: [
+          `<strong style="color:#E6E6E6">Nome:</strong> ${name}`,
+          `<strong style="color:#E6E6E6">E-mail:</strong> ${email}`,
+          phone ? `<strong style="color:#E6E6E6">WhatsApp:</strong> ${phone}` : null,
+          `<strong style="color:#E6E6E6">Setor:</strong> ${answers.setor || "—"}`,
+          `<strong style="color:#E6E6E6">Tamanho:</strong> ${answers.tamanho_empresa || "—"}`,
+          `<strong style="color:#E6E6E6">Leads/mês:</strong> ${answers.leads_por_mes || "—"}`,
+          `<strong style="color:#E6E6E6">Tempo de resposta hoje:</strong> ${answers.tempo_resposta || "—"}`,
+          `<strong style="color:#E6E6E6">Maior gargalo:</strong> ${answers.maior_gargalo || "—"}`,
+        ]
+          .filter(Boolean)
+          .join("<br>"),
+      }),
+    }).catch((err) => logger.warn({ err }, "diagnostico: notificação da equipe falhou"));
+
+    // 4. confirma pro interessado
+    sendDiagnosticoConfirmEmail(email, name).catch((err) =>
+      logger.warn({ err }, "diagnostico: confirmação falhou"),
+    );
+
+    logger.info({ name, setor: answers.setor, sub: sub.status }, "diagnostico: recebido");
     return reply.send({ ok: true });
   });
 

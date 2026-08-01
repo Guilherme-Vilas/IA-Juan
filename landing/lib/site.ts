@@ -34,9 +34,10 @@ export function waLink(number: string, text: string): string {
   return `https://wa.me/${number}?text=${encodeURIComponent(text)}`;
 }
 
-// CTA principal: WhatsApp se configurado, senão e-mail (nunca um número fake).
+// CTA principal: WhatsApp se configurado, senão o Diagnóstico Comercial
+// Gratuito (formulário que qualifica) — nunca um mailto seco.
 export function primaryCtaHref(): string {
   return SITE.contactWhatsapp
     ? waLink(SITE.contactWhatsapp, "Olá! Quero conhecer a Vita OS.")
-    : `mailto:${SITE.email}?subject=${encodeURIComponent("Quero conhecer a Vita OS")}`;
+    : "/diagnostico";
 }

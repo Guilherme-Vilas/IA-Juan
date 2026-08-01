@@ -1,4 +1,4 @@
-import { ArrowRight, ShieldCheck, Unlock, Headset, FileCheck2, Instagram, Mail } from "lucide-react";
+import { ArrowRight, ShieldCheck, Unlock, Headset, FileCheck2, Instagram } from "lucide-react";
 import { LogoMark } from "./logo";
 import { SITE, primaryCtaHref, waLink } from "@/lib/site";
 
@@ -41,10 +41,10 @@ export function CtaFooter() {
               Agendar demonstração <ArrowRight size={16} />
             </a>
             <a
-              href={`mailto:${SITE.email}`}
-              className="inline-flex items-center gap-2 rounded-md border border-line px-6 py-3 text-sm text-ink transition-colors hover:border-line-strong"
+              href="/diagnostico"
+              className="inline-flex items-center gap-2 rounded-md border border-accent-bronze/40 bg-accent-bronze/[0.07] px-6 py-3 text-sm text-accent-bronze-soft transition-colors hover:bg-accent-bronze/15"
             >
-              <Mail size={15} /> {SITE.email}
+              Diagnóstico comercial grátis
             </a>
           </div>
         </div>

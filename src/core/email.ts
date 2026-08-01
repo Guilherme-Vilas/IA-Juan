@@ -128,6 +128,43 @@ export async function sendWelcomeEmail(to: string, name: string | null): Promise
   });
 }
 
+// Confirmação de inscrição na base de conteúdo (landing/demo).
+export async function sendSubscribeConfirmEmail(to: string, unsubscribeLink: string): Promise<void> {
+  await sendEmail({
+    to,
+    subject: "Inscrição confirmada — Vita OS",
+    html: renderEmail({
+      title: "Você está dentro.",
+      bodyHtml:
+        "Sua inscrição foi confirmada. A partir de agora você recebe táticas práticas de atendimento e vendas com IA no WhatsApp — sem spam, sem enrolação.<br><br>" +
+        "Enquanto isso, o melhor jeito de entender o que a Vita OS faz é <strong style=\"color:#E6E6E6\">testar a IA ao vivo</strong>:",
+      cta: { label: "Conversar com a Stella agora", url: "https://systemvita.com.br#demo" },
+    }).replace(
+      "</body>",
+      `<div style="text-align:center;padding:8px 0 24px;font-family:Arial,Helvetica,sans-serif;font-size:11px;color:#52525B">Não quer receber? <a href="${unsubscribeLink}" style="color:#71717A">Descadastre-se aqui</a>.</div></body>`,
+    ),
+    headers: {
+      "List-Unsubscribe": `<${unsubscribeLink}>`,
+      "List-Unsubscribe-Post": "List-Unsubscribe=One-Click",
+    },
+  });
+}
+
+// Confirmação do pedido de diagnóstico comercial gratuito.
+export async function sendDiagnosticoConfirmEmail(to: string, name: string | null): Promise<void> {
+  await sendEmail({
+    to,
+    subject: "Recebemos seu diagnóstico — Vita OS",
+    html: renderEmail({
+      title: `${name ? escapeHtml(name.split(" ")[0]!) + ", seu" : "Seu"} diagnóstico está a caminho`,
+      bodyHtml:
+        "Recebemos as informações do seu comercial. Nossa equipe vai analisar e te retornar <strong style=\"color:#E6E6E6\">em até 1 dia útil</strong> com um raio-X honesto: onde você está perdendo lead e o que dá pra recuperar.<br><br>" +
+        "Enquanto espera, vale ver a IA trabalhando ao vivo:",
+      cta: { label: "Testar a Stella agora", url: "https://systemvita.com.br#demo" },
+    }),
+  });
+}
+
 export async function sendResetCodeEmail(to: string, code: string): Promise<void> {
   await sendEmail({
     to,

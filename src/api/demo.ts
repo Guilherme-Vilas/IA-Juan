@@ -247,10 +247,16 @@ export async function registerDemoRoutes(app: FastifyInstance) {
       if (!result.ok) return reply.code(400).send({ error: result.error ?? "não foi possível registrar" });
     }
 
-    // E-mail → base de marketing (best-effort, nunca derruba a captura).
+    // E-mail → base de marketing + confirmação de inscrição (best-effort).
     if (hasEmail) {
-      const { subscribeContact } = await import("./marketing.js");
-      await subscribeContact(email, body?.name ?? null, "demo-landing").catch(() => undefined);
+      const { subscribeContact, unsubscribeUrl } = await import("./marketing.js");
+      const sub = await subscribeContact(email, body?.name ?? null, "demo-landing").catch(() => null);
+      if (sub?.token) {
+        const { sendSubscribeConfirmEmail } = await import("../core/email.js");
+        sendSubscribeConfirmEmail(email, unsubscribeUrl(sub.token)).catch((err) =>
+          logger.warn({ err }, "demo: confirmação de inscrição falhou"),
+        );
+      }
     }
 
     logger.info(
