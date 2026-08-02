@@ -7,8 +7,8 @@ import { SITE, primaryCtaHref } from "@/lib/site";
 
 const LINKS = [
   { href: "#produto", label: "Produto" },
-  { href: "#como-funciona", label: "Como funciona" },
   { href: "#demo", label: "Testar a IA" },
+  { href: "#planos", label: "Planos" },
   { href: "#faq", label: "Dúvidas" },
 ];
 

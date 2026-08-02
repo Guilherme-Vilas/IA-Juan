@@ -5,6 +5,7 @@ import { HowItWorks } from "@/components/how-it-works";
 import { ProductPreview } from "@/components/product-preview";
 import { AgentDemo } from "@/components/agent-demo";
 import { Segments } from "@/components/segments";
+import { Pricing } from "@/components/pricing";
 import { Faq } from "@/components/faq";
 import { EmailCapture } from "@/components/email-capture";
 import { CtaFooter } from "@/components/cta-footer";
@@ -20,6 +21,7 @@ export default function Home() {
       <ProductPreview />
       <AgentDemo />
       <Segments />
+      <Pricing />
       <Faq />
       <EmailCapture />
       <CtaFooter />

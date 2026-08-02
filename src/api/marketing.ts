@@ -152,6 +152,7 @@ export async function registerMarketingRoutes(app: FastifyInstance) {
       leads_per_month?: string;
       response_time?: string;
       main_challenge?: string;
+      avg_ticket?: string;
       website?: string; // honeypot
     };
     if (b?.website) return reply.send({ ok: true });
@@ -173,6 +174,7 @@ export async function registerMarketingRoutes(app: FastifyInstance) {
       leads_por_mes: (b?.leads_per_month ?? "").slice(0, 40),
       tempo_resposta: (b?.response_time ?? "").slice(0, 60),
       maior_gargalo: (b?.main_challenge ?? "").slice(0, 300),
+      ticket_medio: (b?.avg_ticket ?? "").slice(0, 40),
     };
 
     // 1. entra na base de nutrição
@@ -204,6 +206,7 @@ export async function registerMarketingRoutes(app: FastifyInstance) {
           `<strong style="color:#E6E6E6">Leads/mês:</strong> ${answers.leads_por_mes || "—"}`,
           `<strong style="color:#E6E6E6">Tempo de resposta hoje:</strong> ${answers.tempo_resposta || "—"}`,
           `<strong style="color:#E6E6E6">Maior gargalo:</strong> ${answers.maior_gargalo || "—"}`,
+          `<strong style="color:#E6E6E6">Ticket médio (comissão):</strong> ${answers.ticket_medio || "—"}`,
         ]
           .filter(Boolean)
           .join("<br>"),

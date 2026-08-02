@@ -31,7 +31,21 @@ export default function DiagnosticoPage() {
           </p>
         </div>
 
-        <div className="mt-10">
+        {/* O que a pessoa recebe — enquadramento consultivo */}
+        <div className="stagger mt-8 grid gap-2 sm:grid-cols-3">
+          {[
+            ["1. Mapa de vazamentos", "Onde exatamente os leads escapam no seu processo hoje"],
+            ["2. Custo em R$", "Quanto isso representa em comissões perdidas por mês"],
+            ["3. Plano de ação", "3 passos práticos — aplicáveis com ou sem a Vita OS"],
+          ].map(([t, d]) => (
+            <div key={t} className="rounded-xl border border-line bg-canvas-surface/60 p-4">
+              <p className="font-serif text-[14px] text-accent-bronze-soft">{t}</p>
+              <p className="mt-1 text-[12px] leading-relaxed text-ink-muted">{d}</p>
+            </div>
+          ))}
+        </div>
+
+        <div className="mt-8">
           <DiagnosticoForm />
         </div>
       </div>

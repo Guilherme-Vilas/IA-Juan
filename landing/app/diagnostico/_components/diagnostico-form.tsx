@@ -18,6 +18,51 @@ const CHALLENGES = [
   "Falta follow-up (esqueço de cobrar)",
   "Falta organização / CRM",
 ];
+const TICKETS = ["Até R$ 5 mil", "R$ 5 a 15 mil", "R$ 15 a 40 mil", "Acima de R$ 40 mil", "Prefiro não dizer"];
+
+// ===== Prévia consultiva: estimativa conservadora calculada das respostas =====
+const LEADS_MID: Record<string, number> = {
+  "Até 50/mês": 30,
+  "50 a 200/mês": 120,
+  "200 a 1.000/mês": 500,
+  "Mais de 1.000/mês": 1500,
+  "Não sei dizer": 80,
+};
+const LOSS_FACTOR: Record<string, number> = {
+  "Em minutos": 0.12,
+  "Em algumas horas": 0.38,
+  "No dia seguinte": 0.55,
+  "Depende / não sei": 0.45,
+};
+const TICKET_MID: Record<string, number | null> = {
+  "Até R$ 5 mil": 3500,
+  "R$ 5 a 15 mil": 10000,
+  "R$ 15 a 40 mil": 25000,
+  "Acima de R$ 40 mil": 60000,
+  "Prefiro não dizer": null,
+};
+const CHALLENGE_INSIGHT: Record<string, string> = {
+  "Demoro pra responder os leads":
+    "A chance de contato despenca a cada hora sem resposta. Resposta em segundos, 24/7, é exatamente o vazamento nº 1 que dá pra estancar primeiro.",
+  "Recebo poucos leads":
+    "Volume não precisa depender de indicação: prospecção ativa em cadência + busca de leads por CNPJ criam fluxo previsível de conversas novas.",
+  "Os leads que chegam são ruins":
+    "O problema raro é o lead — é o filtro. Qualificação automática (renda, timing, decisor) separa curioso de comprador antes de chegar em você.",
+  "Falta follow-up (esqueço de cobrar)":
+    "Nos benchmarks de vendas, 40-60% das respostas vêm do follow-up — que é justamente o que escapa quando depende de memória humana.",
+  "Falta organização / CRM":
+    "Sem funil visível, lead esfria em silêncio. Um pipeline que se atualiza sozinho mostra exatamente onde está o dinheiro parado.",
+};
+
+function computePreview(leads: string, response: string, ticket: string) {
+  const mid = LEADS_MID[leads] ?? 80;
+  const factor = LOSS_FACTOR[response] ?? 0.4;
+  const lostLeads = Math.max(1, Math.round(mid * factor));
+  const tMid = TICKET_MID[ticket] ?? null;
+  // conversão conservadora de 4% dos leads perdidos em vendas que não aconteceram
+  const lostMoney = tMid ? Math.round((lostLeads * 0.04 * tMid) / 500) * 500 : null;
+  return { lostLeads, lostMoney };
+}
 
 const inputClass =
   "w-full rounded-md border border-line bg-canvas-surface px-3 py-2.5 text-sm text-ink placeholder:text-ink-faint focus:border-accent-bronze/50 focus:outline-none";
@@ -65,6 +110,7 @@ export function DiagnosticoForm() {
   const [leads, setLeads] = useState("");
   const [response, setResponse] = useState("");
   const [challenge, setChallenge] = useState("");
+  const [ticket, setTicket] = useState("");
   const [honeypot, setHoneypot] = useState("");
 
   const canNext =
@@ -72,7 +118,7 @@ export function DiagnosticoForm() {
       ? name.trim().length > 1 && email.includes("@")
       : step === 1
         ? !!sector && !!size
-        : !!leads && !!response && !!challenge;
+        : !!leads && !!response && !!challenge && !!ticket;
 
   const submit = async () => {
     setBusy(true);
@@ -90,6 +136,7 @@ export function DiagnosticoForm() {
           leads_per_month: leads,
           response_time: response,
           main_challenge: challenge,
+          avg_ticket: ticket,
           website: honeypot,
         }),
       });
@@ -110,21 +157,69 @@ export function DiagnosticoForm() {
   };
 
   if (done) {
+    const { lostLeads, lostMoney } = computePreview(leads, response, ticket);
     return (
-      <div className="animate-fade-up rounded-2xl border border-accent-bronze/30 bg-canvas-surface p-8 text-center shadow-elevated">
-        <CheckCircle2 size={36} className="mx-auto mb-4 text-success" />
-        <h2 className="font-serif text-2xl text-ink">Diagnóstico a caminho.</h2>
-        <p className="mx-auto mt-3 max-w-md text-[14px] leading-relaxed text-ink-soft">
-          Recebemos suas respostas, {name.split(" ")[0]}. Nossa equipe analisa o seu cenário e te
-          retorna <strong className="text-ink">em até 1 dia útil</strong> — confirmação enviada pro
-          seu e-mail.
-        </p>
-        <a
-          href="/#demo"
-          className="shine mt-6 inline-flex items-center gap-2 rounded-md bg-bronze-metal px-6 py-3 text-sm font-semibold text-ink-inverse"
-        >
-          <Sparkles size={15} /> Enquanto espera: teste a IA ao vivo
-        </a>
+      <div className="animate-fade-up space-y-4">
+        {/* Prévia consultiva imediata — devolve valor na hora */}
+        <div className="rounded-2xl border border-accent-bronze/40 bg-canvas-surface bg-sheen p-8 shadow-glow-bronze">
+          <p className="mb-4 flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.16em] text-accent-bronze-soft">
+            <Sparkles size={12} /> Prévia do seu diagnóstico
+          </p>
+          <div className="grid gap-4 sm:grid-cols-2">
+            <div className="rounded-xl bg-canvas-deep/70 p-5 text-center">
+              <div className="font-serif text-[40px] leading-none text-ink">~{lostLeads}</div>
+              <p className="mt-2 text-[12px] leading-relaxed text-ink-muted">
+                leads/mês provavelmente <strong className="text-ink">escapando</strong> pelo tempo de
+                resposta atual
+              </p>
+            </div>
+            <div className="rounded-xl border border-accent-bronze/30 bg-accent-bronze/10 p-5 text-center">
+              {lostMoney ? (
+                <>
+                  <div className="font-serif text-[32px] leading-tight text-accent-bronze-soft">
+                    ≈ R$ {lostMoney.toLocaleString("pt-BR")}
+                  </div>
+                  <p className="mt-2 text-[12px] leading-relaxed text-ink-muted">
+                    por mês em comissões que <strong className="text-ink">não aconteceram</strong>
+                  </p>
+                </>
+              ) : (
+                <>
+                  <div className="font-serif text-[28px] leading-tight text-accent-bronze-soft">R$ ?</div>
+                  <p className="mt-2 text-[12px] leading-relaxed text-ink-muted">
+                    sem o valor da sua venda média, o custo fica pro raio-X completo
+                  </p>
+                </>
+              )}
+            </div>
+          </div>
+          <div className="mt-5 rounded-lg border-l-2 border-accent-bronze/60 bg-canvas-deep/50 px-4 py-3">
+            <p className="text-[13px] leading-relaxed text-ink-soft">
+              <strong className="text-ink">Sobre o seu maior gargalo:</strong>{" "}
+              {CHALLENGE_INSIGHT[challenge] ?? ""}
+            </p>
+          </div>
+          <p className="mt-4 text-[10.5px] leading-relaxed text-ink-faint">
+            Estimativa conservadora com base em benchmarks de tempo de resposta e conversão média de 4%.
+            O raio-X completo refina esses números com o seu cenário real.
+          </p>
+        </div>
+
+        <div className="rounded-2xl border border-line bg-canvas-surface p-6 text-center">
+          <CheckCircle2 size={26} className="mx-auto mb-3 text-success" />
+          <p className="mx-auto max-w-md text-[13.5px] leading-relaxed text-ink-soft">
+            {name.split(" ")[0]}, o <strong className="text-ink">raio-X completo</strong> (vazamentos,
+            custo real e plano de ação em 3 passos) chega no seu e-mail{" "}
+            <strong className="text-ink">em até 1 dia útil</strong> — análise feita por gente, não por
+            robô.
+          </p>
+          <a
+            href="/#demo"
+            className="shine mt-5 inline-flex items-center gap-2 rounded-md bg-bronze-metal px-6 py-3 text-sm font-semibold text-ink-inverse"
+          >
+            <Sparkles size={15} /> Enquanto espera: veja a IA estancar isso ao vivo
+          </a>
+        </div>
       </div>
     );
   }
@@ -203,6 +298,12 @@ export function DiagnosticoForm() {
           <div>
             <span className="mb-2 block text-xs font-medium text-ink-soft">Qual o maior gargalo? *</span>
             <OptionGrid options={CHALLENGES} value={challenge} onPick={setChallenge} />
+          </div>
+          <div>
+            <span className="mb-2 block text-xs font-medium text-ink-soft">
+              Quanto vale uma venda fechada pra você (comissão)? *
+            </span>
+            <OptionGrid options={TICKETS} value={ticket} onPick={setTicket} />
           </div>
         </div>
       )}
