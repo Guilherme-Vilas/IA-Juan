@@ -105,6 +105,21 @@ export async function sendText(tenant: TenantRow, waId: string, text: string): P
   }
 }
 
+// Estado da conexão da instância ("open" = WhatsApp conectado).
+export async function getConnectionState(tenant: TenantRow): Promise<string> {
+  if (config.SIMULATOR_MODE || tenant.slug === config.DEMO_TENANT_SLUG) return "open";
+  try {
+    const res = await client.get<{ instance?: { state?: string } } | { state?: string }>(
+      `/instance/connectionState/${tenant.evolution_instance}`,
+    );
+    const data = res.data as { instance?: { state?: string }; state?: string };
+    return data?.instance?.state ?? data?.state ?? "desconhecido";
+  } catch (err) {
+    logger.warn({ err, tenant: tenant.slug }, "evolution.connectionState failed");
+    return "desconhecido";
+  }
+}
+
 // Mídia (imagem/vídeo/documento) com legenda opcional.
 export async function sendMedia(
   tenant: TenantRow,

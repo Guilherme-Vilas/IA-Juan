@@ -1,18 +1,37 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { HelpCircle, X, Send, Sparkles } from "lucide-react";
+import { HelpCircle, X, Send, Sparkles, Zap, Check, ChevronDown } from "lucide-react";
 
-// Assistente de suporte in-app: tira dúvidas de uso e direciona pro lugar
-// certo — reduz suporte humano. (Fase 1: responde; próximas: consulta e executa.)
+// Assistente de suporte in-app: responde, consulta dados reais e PROPÕE ações
+// que só executam com confirmação humana (card Aplicar/Descartar).
 
-type Msg = { role: "user" | "assistant"; content: string };
+type ActionState = "pending" | "applying" | "applied" | "rejected" | "error";
+type ActionCard = {
+  id: number;
+  type: string;
+  summary: string;
+  detail: string | null;
+  state: ActionState;
+  error?: string;
+};
+type Msg =
+  | { role: "user" | "assistant"; content: string }
+  | { role: "action"; action: ActionCard };
+
+const ACTION_LABEL: Record<string, string> = {
+  editar_prompt: "Editar prompt da IA",
+  pausar_campanha: "Pausar campanha",
+  retomar_campanha: "Retomar campanha",
+  limite_envio: "Limite de envio",
+  bloquear_numero: "Bloquear número",
+};
 
 const SUGGESTIONS = [
-  "Como mudo o comportamento da IA?",
   "Por que minha campanha enviou pouco?",
+  "Meu WhatsApp está conectado?",
+  "Faça a IA nunca falar valores de parcela",
   "Como assumo uma conversa da IA?",
-  "Como importo uma lista de leads?",
 ];
 
 export function HelpAssistant({ tenantSlug }: { tenantSlug: string }) {
@@ -34,18 +53,45 @@ export function HelpAssistant({ tenantSlug }: { tenantSlug: string }) {
     setMsgs(next);
     setBusy(true);
     try {
+      // só user/assistant vão pro histórico do modelo (cards ficam locais)
+      const history = next.filter((m): m is { role: "user" | "assistant"; content: string } => m.role !== "action");
       const res = await fetch(`/api/admin-proxy/tenants/${tenantSlug}/assistant`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ messages: next.slice(-12) }),
+        body: JSON.stringify({ messages: history.slice(-12) }),
       });
       const data = await res.json();
       const reply = res.ok ? data.reply : (data?.error ?? "não consegui responder agora — tenta de novo?");
-      setMsgs((m) => [...m, { role: "assistant", content: reply }]);
+      const actions: ActionCard[] = (data?.actions ?? []).map(
+        (a: { id: number; type: string; summary: string; detail: string | null }) => ({ ...a, state: "pending" as const }),
+      );
+      setMsgs((m) => [...m, { role: "assistant", content: reply }, ...actions.map((a) => ({ role: "action" as const, action: a }))]);
     } catch {
       setMsgs((m) => [...m, { role: "assistant", content: "Conexão falhou — tenta de novo em instantes." }]);
     } finally {
       setBusy(false);
+    }
+  };
+
+  const patchAction = (id: number, patch: Partial<ActionCard>) => {
+    setMsgs((m) =>
+      m.map((x) => (x.role === "action" && x.action.id === id ? { role: "action", action: { ...x.action, ...patch } } : x)),
+    );
+  };
+
+  const resolveAction = async (a: ActionCard, verb: "apply" | "reject") => {
+    patchAction(a.id, { state: "applying", error: undefined });
+    try {
+      const res = await fetch(`/api/admin-proxy/tenants/${tenantSlug}/assistant/actions/${a.id}/${verb}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({}),
+      });
+      const data = await res.json().catch(() => null);
+      if (!res.ok) throw new Error(data?.error ?? "erro");
+      patchAction(a.id, { state: verb === "apply" ? "applied" : "rejected" });
+    } catch (e) {
+      patchAction(a.id, { state: "error", error: String(e instanceof Error ? e.message : e) });
     }
   };
 
@@ -96,19 +142,68 @@ export function HelpAssistant({ tenantSlug }: { tenantSlug: string }) {
                 </div>
               </div>
             )}
-            {msgs.map((m, i) => (
-              <div key={i} className={`flex animate-fade-up ${m.role === "user" ? "justify-end" : "justify-start"}`}>
-                <div
-                  className={
-                    m.role === "user"
-                      ? "max-w-[85%] whitespace-pre-wrap rounded-2xl rounded-br-sm bg-accent-bronze/20 px-3 py-2 text-ink"
-                      : "max-w-[85%] whitespace-pre-wrap rounded-2xl rounded-bl-sm bg-canvas-surface-2 px-3 py-2 text-ink-soft"
-                  }
-                >
-                  {m.content}
+            {msgs.map((m, i) =>
+              m.role === "action" ? (
+                <div key={i} className="animate-fade-up rounded-xl border border-accent-bronze/40 bg-accent-bronze/[0.07] p-3">
+                  <div className="mb-1.5 flex items-center gap-1.5">
+                    <Zap size={11} className="text-accent-bronze-soft" />
+                    <span className="text-[10px] font-semibold uppercase tracking-[0.12em] text-accent-bronze-soft">
+                      {ACTION_LABEL[m.action.type] ?? m.action.type}
+                    </span>
+                  </div>
+                  <p className="text-[12.5px] leading-relaxed text-ink">{m.action.summary}</p>
+                  {m.action.detail && (
+                    <details className="group mt-1.5">
+                      <summary className="flex cursor-pointer list-none items-center gap-1 text-[11px] text-ink-muted hover:text-ink [&::-webkit-details-marker]:hidden">
+                        Ver detalhes <ChevronDown size={10} className="transition-transform group-open:rotate-180" />
+                      </summary>
+                      <pre className="mt-1.5 max-h-40 overflow-y-auto whitespace-pre-wrap rounded-md bg-canvas-deep p-2.5 font-mono text-[10.5px] leading-relaxed text-ink-soft">
+                        {m.action.detail}
+                      </pre>
+                    </details>
+                  )}
+                  <div className="mt-2.5">
+                    {m.action.state === "pending" || m.action.state === "error" ? (
+                      <div className="flex items-center gap-2">
+                        <button
+                          onClick={() => resolveAction(m.action, "apply")}
+                          className="shine inline-flex items-center gap-1.5 rounded-md bg-bronze-metal px-3.5 py-1.5 text-[12px] font-semibold text-ink-inverse"
+                        >
+                          <Check size={12} /> Aplicar
+                        </button>
+                        <button
+                          onClick={() => resolveAction(m.action, "reject")}
+                          className="rounded-md border border-line px-3 py-1.5 text-[12px] text-ink-muted hover:text-ink"
+                        >
+                          Descartar
+                        </button>
+                      </div>
+                    ) : m.action.state === "applying" ? (
+                      <span className="text-[11.5px] text-ink-muted">Aplicando…</span>
+                    ) : m.action.state === "applied" ? (
+                      <span className="flex items-center gap-1.5 text-[12px] text-success">
+                        <Check size={12} /> Aplicado — já está valendo
+                      </span>
+                    ) : (
+                      <span className="text-[11.5px] text-ink-faint">Descartado</span>
+                    )}
+                    {m.action.error && <p className="mt-1 text-[11px] text-danger">{m.action.error}</p>}
+                  </div>
                 </div>
-              </div>
-            ))}
+              ) : (
+                <div key={i} className={`flex animate-fade-up ${m.role === "user" ? "justify-end" : "justify-start"}`}>
+                  <div
+                    className={
+                      m.role === "user"
+                        ? "max-w-[85%] whitespace-pre-wrap rounded-2xl rounded-br-sm bg-accent-bronze/20 px-3 py-2 text-ink"
+                        : "max-w-[85%] whitespace-pre-wrap rounded-2xl rounded-bl-sm bg-canvas-surface-2 px-3 py-2 text-ink-soft"
+                    }
+                  >
+                    {m.content}
+                  </div>
+                </div>
+              ),
+            )}
             {busy && (
               <div className="flex justify-start">
                 <div className="flex items-center gap-1 rounded-2xl rounded-bl-sm bg-canvas-surface-2 px-3.5 py-2.5 text-ink-muted">
