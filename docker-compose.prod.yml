@@ -91,6 +91,9 @@ services:
     restart: unless-stopped
     expose:
       - "3000"
+    volumes:
+      # mídia das campanhas (compartilhado com o worker, que faz o envio)
+      - app-media:/data/media
     environment:
       - NODE_ENV=production
       - LOG_LEVEL=info
@@ -147,6 +150,8 @@ services:
     build: .
     restart: unless-stopped
     command: ["sh", "-c", "npx tsx src/workers.ts"]
+    volumes:
+      - app-media:/data/media
     environment:
       - NODE_ENV=production
       - LOG_LEVEL=info
@@ -217,3 +222,4 @@ volumes:
   redis-data:
   pg-data:
   evolution-data:
+  app-media:

@@ -82,6 +82,9 @@ const schema = z.object({
 
   SIMULATOR_MODE: booleanFromEnv.default(false),
 
+  // Mídia de campanhas (vídeo/áudio/imagem) — volume compartilhado app+worker.
+  MEDIA_DIR: z.string().default("/data/media"),
+
   // Prospect module
   PROSPECT_TICK_MS: z.coerce.number().default(5 * 60 * 1000),
   PROSPECT_JITTER_MS: z.coerce.number().default(10 * 60 * 1000),

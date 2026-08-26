@@ -16,6 +16,7 @@ import { registerDiscoveryRoutes } from "./api/discovery.js";
 import { registerDemoRoutes } from "./api/demo.js";
 import { registerTrainingRoutes } from "./api/training.js";
 import { registerMarketingRoutes } from "./api/marketing.js";
+import { registerAssistantRoutes } from "./api/assistant.js";
 import { registerGoogleRoutes } from "./api/google.js";
 import { registerSaasRoutes } from "./api/saas.js";
 import { registerTenantProvisioningRoutes } from "./api/tenants.js";
@@ -26,7 +27,8 @@ import { registerPropertyRoutes } from "./api/properties.js";
 import { registerAutomationRoutes } from "./api/automations.js";
 
 async function main() {
-  const app = Fastify({ logger: false, bodyLimit: 10 * 1024 * 1024 });
+  // 25MB: comporta upload de mídia de campanha (16MB de arquivo vira ~21MB em base64).
+  const app = Fastify({ logger: false, bodyLimit: 25 * 1024 * 1024 });
 
   // Deep health check — testa Postgres e Redis de verdade.
   app.get("/health", async (_req, reply) => {
@@ -62,6 +64,7 @@ async function main() {
   await registerDemoRoutes(app);
   await registerTrainingRoutes(app);
   await registerMarketingRoutes(app);
+  await registerAssistantRoutes(app);
   await registerGoogleRoutes(app);
   await registerSaasRoutes(app);
   await registerKnowledgeRoutes(app);

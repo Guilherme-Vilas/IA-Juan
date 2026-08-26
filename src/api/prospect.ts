@@ -28,8 +28,21 @@ import {
   removeFromBlacklist,
 } from "../prospect/suppression.js";
 import { normalizeBrazilPhone } from "../prospect/csv.js";
+import crypto from "node:crypto";
+import fs from "node:fs/promises";
+import path from "node:path";
+import { config } from "../config.js";
 import { parseProspectsFile } from "../prospect/import-file.js";
 import type { ProspectInput } from "../prospect/repo.js";
+import type { StepMediaType } from "../prospect/steps.js";
+
+// Extensão → tipo de mídia do WhatsApp.
+const MEDIA_EXT: Record<string, StepMediaType> = {
+  jpg: "image", jpeg: "image", png: "image", webp: "image",
+  mp4: "video", "3gp": "video", mov: "video",
+  mp3: "audio", ogg: "audio", opus: "audio", m4a: "audio", aac: "audio",
+  pdf: "document",
+};
 
 function isChannel(x: unknown): x is Channel {
   return x === "whatsapp" || x === "linkedin";
@@ -125,13 +138,51 @@ export async function registerProspectRoutes(app: FastifyInstance) {
       return { campaign: c, metrics, prospects, steps, funnel };
     });
 
+    // Upload de mídia pra usar nos passos da cadência (vídeo/áudio/imagem/PDF).
+    // Salva no volume compartilhado (app+worker) e devolve a referência.
+    scope.post("/admin/tenants/:slug/campaigns/media", async (req, reply) => {
+      const body = req.body as { filename?: string; base64?: string };
+      if (!body?.base64 || !body?.filename) return reply.code(400).send({ error: "filename e base64 obrigatórios" });
+      const ext = (body.filename.split(".").pop() ?? "").toLowerCase();
+      const mediaType = MEDIA_EXT[ext];
+      if (!mediaType) {
+        return reply.code(400).send({ error: `formato .${ext} não suportado — use jpg/png/mp4/mp3/ogg/pdf` });
+      }
+      let buf: Buffer;
+      try {
+        buf = Buffer.from(body.base64, "base64");
+      } catch {
+        return reply.code(400).send({ error: "base64 inválido" });
+      }
+      if (buf.length > 16 * 1024 * 1024) {
+        return reply.code(413).send({ error: "arquivo grande demais — o WhatsApp aceita até 16MB" });
+      }
+
+      const hash = crypto.createHash("sha1").update(buf).digest("hex").slice(0, 20);
+      const ref = `${req.tenantId}/${hash}.${ext}`;
+      const dir = path.join(config.MEDIA_DIR, String(req.tenantId));
+      await fs.mkdir(dir, { recursive: true });
+      await fs.writeFile(path.join(config.MEDIA_DIR, ref), buf);
+      logger.info({ tenant: req.tenantSlug, ref, type: mediaType, kb: Math.round(buf.length / 1024) }, "campanha: mídia salva");
+      return reply.send({ media_ref: ref, media_type: mediaType, media_name: body.filename });
+    });
+
     // Substitui a cadência inteira (passos + variantes). POST em vez de PUT
     // porque o admin-proxy do dashboard só encaminha GET/POST/PATCH/DELETE.
     scope.post("/admin/tenants/:slug/campaigns/:id/steps", async (req, reply) => {
       const campaignId = Number((req.params as { id: string }).id);
       const c = await getCampaign(req.tenantId!, campaignId);
       if (!c) return reply.code(404).send({ error: "campaign not found" });
-      const body = req.body as { steps?: Array<{ wait_hours?: number; template_text?: string; variants?: Array<{ label?: string; template_text?: string; active?: boolean }> }> };
+      const body = req.body as {
+        steps?: Array<{
+          wait_hours?: number;
+          template_text?: string;
+          media_type?: string | null;
+          media_ref?: string | null;
+          media_name?: string | null;
+          variants?: Array<{ label?: string; template_text?: string; active?: boolean }>;
+        }>;
+      };
       if (!Array.isArray(body?.steps) || body.steps.length === 0) {
         return reply.code(400).send({ error: "steps deve ser uma lista com pelo menos 1 passo" });
       }
@@ -145,9 +196,18 @@ export async function registerProspectRoutes(app: FastifyInstance) {
         const variants = (s.variants ?? [])
           .filter((v) => v?.template_text?.trim() && v?.label?.trim())
           .map((v) => ({ label: v.label!.trim().toUpperCase(), template_text: v.template_text!, active: v.active ?? true }));
+        // mídia: só refs do PRÓPRIO tenant (impede referenciar arquivo alheio)
+        const validMedia =
+          s.media_ref &&
+          s.media_ref.startsWith(`${req.tenantId}/`) &&
+          s.media_type &&
+          ["image", "video", "audio", "document"].includes(s.media_type);
         steps.push({
           wait_hours: Math.max(0, Math.min(24 * 30, Number(s.wait_hours ?? 48))),
           template_text: s.template_text,
+          media_type: validMedia ? (s.media_type as StepMediaType) : null,
+          media_ref: validMedia ? s.media_ref! : null,
+          media_name: validMedia ? (s.media_name ?? "arquivo") : null,
           variants,
         });
       }

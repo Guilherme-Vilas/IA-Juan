@@ -105,6 +105,51 @@ export async function sendText(tenant: TenantRow, waId: string, text: string): P
   }
 }
 
+// Mídia (imagem/vídeo/documento) com legenda opcional.
+export async function sendMedia(
+  tenant: TenantRow,
+  waId: string,
+  input: { mediatype: "image" | "video" | "document"; base64: string; fileName: string; caption?: string },
+): Promise<void> {
+  if (config.SIMULATOR_MODE) {
+    logger.debug({ tenant: tenant.slug, waId, type: input.mediatype }, "sendMedia suppressed (SIMULATOR_MODE)");
+    return;
+  }
+  if (tenant.slug === config.DEMO_TENANT_SLUG) return;
+  try {
+    await client.post(`/message/sendMedia/${tenant.evolution_instance}`, {
+      number: waId,
+      mediatype: input.mediatype,
+      media: input.base64,
+      fileName: input.fileName,
+      ...(input.caption ? { caption: input.caption } : {}),
+      options: { delay: 800, presence: "composing" },
+    });
+  } catch (err) {
+    logger.error({ err, tenant: tenant.slug, waId, type: input.mediatype }, "evolution.sendMedia failed");
+    throw err;
+  }
+}
+
+// Áudio como mensagem de voz (PTT) — o formato que humano manda.
+export async function sendAudio(tenant: TenantRow, waId: string, base64: string): Promise<void> {
+  if (config.SIMULATOR_MODE) {
+    logger.debug({ tenant: tenant.slug, waId }, "sendAudio suppressed (SIMULATOR_MODE)");
+    return;
+  }
+  if (tenant.slug === config.DEMO_TENANT_SLUG) return;
+  try {
+    await client.post(`/message/sendWhatsAppAudio/${tenant.evolution_instance}`, {
+      number: waId,
+      audio: base64,
+      options: { delay: 800, presence: "recording" },
+    });
+  } catch (err) {
+    logger.error({ err, tenant: tenant.slug, waId }, "evolution.sendAudio failed");
+    throw err;
+  }
+}
+
 export async function sendPresence(
   tenant: TenantRow,
   waId: string,

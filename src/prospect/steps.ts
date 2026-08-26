@@ -15,12 +15,17 @@ export type StepVariantRow = {
   created_at: Date;
 };
 
+export type StepMediaType = "image" | "video" | "audio" | "document";
+
 export type StepRow = {
   id: number;
   campaign_id: number;
   position: number;
   wait_hours: number;
   template_text: string;
+  media_type: StepMediaType | null;
+  media_ref: string | null;
+  media_name: string | null;
   created_at: Date;
   updated_at: Date;
 };
@@ -30,6 +35,9 @@ export type StepWithVariants = StepRow & { variants: StepVariantRow[] };
 export type StepInput = {
   wait_hours: number;
   template_text: string;
+  media_type?: StepMediaType | null;
+  media_ref?: string | null;
+  media_name?: string | null;
   variants?: Array<{ label: string; template_text: string; active?: boolean }>;
 };
 
@@ -64,12 +72,14 @@ export async function replaceSteps(campaignId: number, steps: StepInput[]): Prom
       const s = steps[i]!;
       const waitHours = position === 1 ? 0 : Math.max(1, s.wait_hours);
       const { rows } = await client.query<{ id: number }>(
-        `INSERT INTO campaign_steps (campaign_id, position, wait_hours, template_text)
-         VALUES ($1,$2,$3,$4)
+        `INSERT INTO campaign_steps (campaign_id, position, wait_hours, template_text, media_type, media_ref, media_name)
+         VALUES ($1,$2,$3,$4,$5,$6,$7)
          ON CONFLICT (campaign_id, position)
-         DO UPDATE SET wait_hours = EXCLUDED.wait_hours, template_text = EXCLUDED.template_text, updated_at = now()
+         DO UPDATE SET wait_hours = EXCLUDED.wait_hours, template_text = EXCLUDED.template_text,
+                       media_type = EXCLUDED.media_type, media_ref = EXCLUDED.media_ref,
+                       media_name = EXCLUDED.media_name, updated_at = now()
          RETURNING id`,
-        [campaignId, position, waitHours, s.template_text],
+        [campaignId, position, waitHours, s.template_text, s.media_type ?? null, s.media_ref ?? null, s.media_name ?? null],
       );
       const stepId = rows[0]!.id;
 

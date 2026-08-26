@@ -394,6 +394,9 @@ export type CampaignStep = {
   position: number;
   wait_hours: number;
   template_text: string;
+  media_type: "image" | "video" | "audio" | "document" | null;
+  media_ref: string | null;
+  media_name: string | null;
   variants: CampaignStepVariant[];
 };
 

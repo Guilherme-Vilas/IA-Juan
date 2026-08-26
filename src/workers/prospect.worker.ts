@@ -14,7 +14,7 @@ import {
   logProspectEvent,
   updateProspect,
 } from "../prospect/repo.js";
-import { whatsappSender } from "../prospect/senders/whatsapp.js";
+import { whatsappSender, sendWhatsappWithMedia } from "../prospect/senders/whatsapp.js";
 import { linkedinSender } from "../prospect/senders/linkedin.js";
 import { checkSendSuppression } from "../prospect/suppression.js";
 import { requireTenantById } from "../core/tenants.js";
@@ -81,8 +81,19 @@ const sendWorker = new Worker<ProspectSendJob>(
     await updateProspect(prospect.id, { composed_message: text });
     await logProspectEvent(prospect.id, "composed", { chars: text.length, step: stepNumber, variant: chosen.label });
 
-    const sender = campaign.channel === "whatsapp" ? whatsappSender : linkedinSender;
-    const result = await sender.send(campaign, prospect, text, tenant);
+    // Passo com mídia (só WhatsApp): imagem/vídeo/doc com o texto de legenda;
+    // áudio como voz + texto separado. Sem mídia: fluxo normal.
+    let result;
+    if (campaign.channel === "whatsapp" && step?.media_ref && step.media_type) {
+      result = await sendWhatsappWithMedia(tenant, prospect.external_id, text, {
+        type: step.media_type,
+        ref: step.media_ref,
+        name: step.media_name ?? "arquivo",
+      });
+    } else {
+      const sender = campaign.channel === "whatsapp" ? whatsappSender : linkedinSender;
+      result = await sender.send(campaign, prospect, text, tenant);
+    }
 
     switch (result.status) {
       case "sent": {
