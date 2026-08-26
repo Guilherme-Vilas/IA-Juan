@@ -17,6 +17,7 @@ import { registerDemoRoutes } from "./api/demo.js";
 import { registerTrainingRoutes } from "./api/training.js";
 import { registerMarketingRoutes } from "./api/marketing.js";
 import { registerAssistantRoutes } from "./api/assistant.js";
+import { registerWhatsappRoutes } from "./api/whatsapp.js";
 import { registerGoogleRoutes } from "./api/google.js";
 import { registerSaasRoutes } from "./api/saas.js";
 import { registerTenantProvisioningRoutes } from "./api/tenants.js";
@@ -65,6 +66,7 @@ async function main() {
   await registerTrainingRoutes(app);
   await registerMarketingRoutes(app);
   await registerAssistantRoutes(app);
+  await registerWhatsappRoutes(app);
   await registerGoogleRoutes(app);
   await registerSaasRoutes(app);
   await registerKnowledgeRoutes(app);

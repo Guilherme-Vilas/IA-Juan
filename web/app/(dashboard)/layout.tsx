@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 import { Sidebar } from "@/components/layout/sidebar";
 import { HelpAssistant } from "@/components/help-assistant";
+import { WhatsappAlert } from "@/components/whatsapp-alert";
 import { getSession } from "@/lib/session";
 import { getCurrentTenant } from "@/lib/tenant";
 
@@ -32,6 +33,8 @@ export default async function DashboardLayout({ children }: { children: React.Re
       <main className="flex flex-1 flex-col overflow-hidden">{children}</main>
       {/* assistente de suporte in-app (tira-dúvidas com IA) */}
       {tenantSlug && <HelpAssistant tenantSlug={tenantSlug} />}
+      {/* alerta global: WhatsApp desconectado + reconexão por QR no painel */}
+      {tenantSlug && <WhatsappAlert tenantSlug={tenantSlug} />}
     </div>
   );
 }
