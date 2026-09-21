@@ -232,21 +232,51 @@ export async function getProspect(id: number): Promise<ProspectRow | null> {
   return rows[0] ?? null;
 }
 
+export function getPhoneVariants(id: string): string[] {
+  const digits = id.replace(/\D/g, "");
+  const variants = new Set<string>([id]);
+  if (digits) variants.add(digits);
+
+  // Variação brasileira com/sem o 9º dígito:
+  // Se tem 13 dígitos: 55 + DDD(2) + 9 + 8 dígitos -> cria versão sem 9
+  if (digits.startsWith("55") && digits.length === 13 && digits[4] === "9") {
+    variants.add(digits.slice(0, 4) + digits.slice(5));
+  }
+  // Se tem 12 dígitos: 55 + DDD(2) + 8 dígitos -> cria versão com 9
+  else if (digits.startsWith("55") && digits.length === 12) {
+    variants.add(digits.slice(0, 4) + "9" + digits.slice(4));
+  }
+  // Se tem 11 dígitos (sem 55): DDD(2) + 9 + 8 dígitos
+  else if (digits.length === 11 && digits[2] === "9") {
+    variants.add("55" + digits);
+    variants.add("55" + digits.slice(0, 2) + digits.slice(3));
+  }
+  // Se tem 10 dígitos (sem 55): DDD(2) + 8 dígitos
+  else if (digits.length === 10) {
+    variants.add("55" + digits);
+    variants.add("55" + digits.slice(0, 2) + "9" + digits.slice(2));
+  }
+
+  return Array.from(variants);
+}
+
 // Busca prospect ativo POR tenant+external — pra handoff de resposta.
 // Inclui 'pending' no meio da cadência (current_step > 0): a pessoa pode
 // responder entre um passo e outro — isso é reply e cancela os próximos passos.
+// Aceita variações de telefone com/sem o nono dígito.
 export async function findProspectByExternalId(
   tenantId: number,
   externalId: string,
 ): Promise<ProspectRow | null> {
+  const variants = getPhoneVariants(externalId);
   const { rows } = await pool.query<ProspectRow>(
     `SELECT * FROM prospects
-       WHERE tenant_id = $1 AND external_id = $2
+       WHERE tenant_id = $1 AND external_id = ANY($2)
          AND (status IN ('sent','ready_for_manual','queued')
               OR (status = 'pending' AND current_step > 0))
        ORDER BY sent_at DESC NULLS LAST
        LIMIT 1`,
-    [tenantId, externalId],
+    [tenantId, variants],
   );
   return rows[0] ?? null;
 }

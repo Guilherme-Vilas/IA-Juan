@@ -1,8 +1,9 @@
-import { authUrl } from "../src/core/calendar.js";
+import { authUrlForTenant } from "../src/core/calendar.js";
 
+const slug = process.argv[2] || "juan";
 try {
-  const url = authUrl();
-  console.log("\nAbra esta URL no navegador logado na conta Google do Juan:\n");
+  const url = authUrlForTenant(slug);
+  console.log(`\nAbra esta URL no navegador logado na conta Google do tenant ${slug}:\n`);
   console.log(url);
   console.log("\nOu inicie a API e acesse /oauth/google/start\n");
 } catch (err) {

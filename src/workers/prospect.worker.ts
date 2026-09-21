@@ -1,5 +1,5 @@
 import { Worker } from "bullmq";
-import { bullConnection } from "../core/redis.js";
+import { bullConnection, redis, keys } from "../core/redis.js";
 import { logger } from "../core/logger.js";
 import { config } from "../config.js";
 import { composeWithTemplate } from "../prospect/compose.js";
@@ -105,6 +105,17 @@ const sendWorker = new Worker<ProspectSendJob>(
           variantId: chosen.variantId,
           messageText: text,
         });
+
+        // Entra imediatamente na memória da IA (Redis): se o lead responder a qualquer momento,
+        // a IA já saberá exatamente o que foi enviado na abordagem.
+        try {
+          const k = keys.leadHistory(tenant.slug, prospect.external_id);
+          await redis.rpush(k, JSON.stringify({ role: "assistant", content: text }));
+          await redis.ltrim(k, -16, -1);
+          await redis.expire(k, config.LEAD_STATE_TTL_SECONDS);
+        } catch (err) {
+          logger.warn({ err, tenant: tenant.slug, prospectId }, "prospect.worker: leadHistory push falhou");
+        }
         if (nextStep) {
           // Volta pra 'pending' aguardando o próximo passo — dispatcher re-pega
           // quando next_step_at vencer. Reply no meio-tempo cancela (status muda).

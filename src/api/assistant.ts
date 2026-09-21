@@ -1,6 +1,6 @@
 import type { FastifyInstance } from "fastify";
 import { logger } from "../core/logger.js";
-import { pool } from "../core/db.js";
+import { pool, type LeadState } from "../core/db.js";
 import { redis } from "../core/redis.js";
 import { chat, type ChatMessage, type ToolDef } from "../core/llm.js";
 import { config } from "../config.js";
@@ -441,7 +441,7 @@ async function execTool(tenant: TenantRow, name: string, args: Record<string, un
       );
       if (rows.length === 0) return { erro: "nenhum lead encontrado com esse termo" };
       return rows.map((l) => {
-        const score = calculateLeadScore({ state: l.state, slots: l.slots });
+        const score = calculateLeadScore({ state: l.state as LeadState, slots: l.slots });
         return {
           nome: l.nome ?? l.wa_id,
           telefone: l.wa_id,

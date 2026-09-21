@@ -9,6 +9,7 @@ import { retrieveRelevant, formatKnowledgeContext } from "../core/knowledge.js";
 import {
   closeConversation,
   getLead,
+  listMessages,
   reopenConversation,
   updateLead,
   upsertLead,
@@ -37,9 +38,9 @@ async function pushHistory(tenantSlug: string, waId: string, role: "user" | "ass
   await redis.expire(k, config.LEAD_STATE_TTL_SECONDS);
 }
 
-async function loadHistory(tenantSlug: string, waId: string): Promise<ChatMessage[]> {
+async function loadHistory(tenantSlug: string, waId: string, leadId?: number): Promise<ChatMessage[]> {
   const items = await redis.lrange(keys.leadHistory(tenantSlug, waId), 0, -1);
-  return items
+  const parsed = items
     .map((x) => {
       try {
         return JSON.parse(x) as ChatMessage;
@@ -48,6 +49,40 @@ async function loadHistory(tenantSlug: string, waId: string): Promise<ChatMessag
       }
     })
     .filter((x): x is ChatMessage => !!x);
+
+  // Se o Redis já tiver mensagens e incluir alguma fala do assistente (ou mais de 1 mensagem), usamos direto.
+  // Mas se estiver vazio ou contiver apenas a mensagem do usuário (ex: Redis expirou e perdeu a abordagem de campanha),
+  // buscamos no banco Postgres as mensagens registradas para o lead para garantir a memória completa.
+  const hasPriorAssistantMessage = parsed.some((m) => m.role === "assistant");
+  if (parsed.length > 0 && hasPriorAssistantMessage) {
+    return parsed;
+  }
+
+  if (leadId) {
+    try {
+      const dbMsgs = await listMessages(leadId, 0, HISTORY_LIMIT);
+      if (dbMsgs.length > 0) {
+        const recovered: ChatMessage[] = [];
+        const k = keys.leadHistory(tenantSlug, waId);
+        await redis.del(k).catch(() => undefined);
+        for (const m of dbMsgs) {
+          if (m.role === "user" || m.role === "assistant") {
+            recovered.push({ role: m.role, content: m.content });
+            await redis.rpush(k, JSON.stringify({ role: m.role, content: m.content })).catch(() => undefined);
+          }
+        }
+        await redis.ltrim(k, -HISTORY_LIMIT, -1).catch(() => undefined);
+        await redis.expire(k, config.LEAD_STATE_TTL_SECONDS).catch(() => undefined);
+        if (recovered.length > 0) {
+          return recovered;
+        }
+      }
+    } catch (err) {
+      logger.warn({ err, tenantSlug, waId, leadId }, "loadHistory: fallback to postgres messages failed");
+    }
+  }
+
+  return parsed;
 }
 
 // Heurística barata: só vale acionar o RAG (custa tokens + embedding) quando a
@@ -123,6 +158,19 @@ function buildSystemPrompt(
       "## ⚠️ RETORNO de conversa fechada",
       `Esta conversa estava fechada com motivo: \`${reopenedFrom}\`.`,
       motivos[reopenedFrom] ?? "Lead voltou. Recebe com naturalidade.",
+    );
+  }
+
+  if (lead.source?.startsWith("campaign:")) {
+    variable.push(
+      "",
+      "## ⚠️ CONTEXTO: LEAD DE CAMPANHA DE PROSPECÇÃO (MENSAGEM ATIVA DO OPERADOR)",
+      "Este lead foi contatado ativamente através de uma campanha de mensagem enviada pelo operador.",
+      "A abordagem enviada consta no histórico de mensagens logo acima (como fala do assistente) e o lead está respondendo a ela.",
+      "REGRAS OBRIGATÓRIAS PARA RESPOSTA DE CAMPANHA:",
+      "1. NUNCA faça saudação fria de primeiro contato (ex: NÃO diga 'Olá, em que posso te ajudar?'). O contato já foi iniciado pela nossa abordagem!",
+      "2. Se o nome do lead já for conhecido, NUNCA pergunte o nome dele novamente.",
+      "3. Dê continuidade imediata, natural e coesa ao assunto/proposta da mensagem enviada na campanha e responda diretamente ao que o lead acabou de falar.",
     );
   }
 
@@ -380,7 +428,7 @@ export async function runTurn(
   const hasCatalog = (await countProperties(tenant.id).catch(() => 0)) > 0;
   const toolsForTurn = hasCatalog ? [...SDR_TOOLS, PROPERTY_TOOL] : SDR_TOOLS;
 
-  const history = await loadHistory(tenant.slug, waId);
+  const history = await loadHistory(tenant.slug, waId, lead.id);
   const systemPrompt = buildSystemPrompt(prompts, lead, agentSettings, reopenedFrom, knowledgeContext, stageGoal);
 
   const messages: ChatMessage[] = [{ role: "system", content: systemPrompt }, ...history];

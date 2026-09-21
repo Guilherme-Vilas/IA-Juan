@@ -1,8 +1,10 @@
-import { upsertLead, logMessage, type Slots } from "../core/db.js";
+import { upsertLead, updateLead, logMessage, type Slots } from "../core/db.js";
 import { logger } from "../core/logger.js";
+import { config } from "../config.js";
+import { redis, keys } from "../core/redis.js";
 import { sendText } from "../core/evolution.js";
 import type { TenantRow } from "../core/tenants.js";
-import { findProspectByExternalId, updateProspect, logProspectEvent } from "./repo.js";
+import { findProspectByExternalId, getCampaignById, updateProspect, logProspectEvent } from "./repo.js";
 import { listSendTexts } from "./steps.js";
 import { addToBlacklist, detectOptOut, OPTOUT_CONFIRMATION } from "./suppression.js";
 import { classifyReply } from "./classify.js";
@@ -34,22 +36,80 @@ export async function handleProspectReply(
     return { matched: true, optedOut: true, prospectId: prospect.id, campaignId: prospect.campaign_id };
   }
 
+  const campaign = await getCampaignById(prospect.campaign_id);
+
   const slots: Slots = {};
-  if (prospect.empresa) {
-    slots.observacoes = `Empresa: ${prospect.empresa}${prospect.cargo ? ` · ${prospect.cargo}` : ""}`;
+  const resolvedNome = prospect.nome?.trim() || pushName?.trim() || null;
+  if (resolvedNome) {
+    slots.nome = resolvedNome;
+  }
+
+  const obsParts: string[] = [];
+  if (campaign?.name) obsParts.push(`Campanha: ${campaign.name}`);
+  if (prospect.empresa) obsParts.push(`Empresa: ${prospect.empresa}`);
+  if (prospect.cargo) obsParts.push(`Cargo: ${prospect.cargo}`);
+  if (obsParts.length > 0) {
+    slots.observacoes = obsParts.join(" · ");
   }
 
   const lead = await upsertLead(tenant.id, waId, {
-    nome: prospect.nome ?? pushName ?? null,
+    nome: resolvedNome,
     source: `campaign:${prospect.campaign_id}`,
+    state: "S1_DESCOBERTA",
     slots,
   });
 
-  // Contexto pro corretor: as abordagens que enviamos entram na Conversa do
-  // lead ANTES da resposta dele (o webhook loga a resposta depois deste handoff).
-  const sends = await listSendTexts(prospect.id).catch(() => [] as string[]);
-  for (const text of sends) {
-    await logMessage(lead.id, "out", "assistant", text).catch(() => undefined);
+  // Se o lead já existia em S0_ABERTURA, move para S1_DESCOBERTA já que a abordagem inicial já ocorreu
+  if (lead.state === "S0_ABERTURA") {
+    await updateLead(tenant.id, waId, {
+      state: "S1_DESCOBERTA",
+      slots: { ...lead.slots, ...slots },
+      nome: resolvedNome ?? lead.nome,
+    }).catch(() => undefined);
+  }
+
+  // Abordagens enviadas: busca da tabela prospect_sends com fallback para a mensagem composta ou template
+  let sends = await listSendTexts(prospect.id).catch(() => [] as string[]);
+  if (sends.length === 0 && prospect.composed_message) {
+    sends = [prospect.composed_message];
+  }
+  if (sends.length === 0 && campaign?.template_text) {
+    sends = [campaign.template_text];
+  }
+
+  // 1. Grava no banco Postgres (messages) para o painel/corretor ver a conversa completa
+  for (const sendText of sends) {
+    await logMessage(lead.id, "out", "assistant", sendText).catch(() => undefined);
+  }
+
+  // 2. MEMÓRIA DA IA (Redis): injeta as abordagens no leadHistory do Redis.
+  // Garante que quando o turno da IA executar no webhook, o histórico de conversa
+  // já conterá o texto que o operador enviou, posicionado antes da resposta do usuário.
+  try {
+    const k = keys.leadHistory(tenant.slug, waId);
+    const existingRaw = await redis.lrange(k, 0, -1).catch(() => [] as string[]);
+    const existingTexts = new Set(
+      existingRaw
+        .map((x) => {
+          try {
+            return (JSON.parse(x) as { content?: string }).content;
+          } catch {
+            return null;
+          }
+        })
+        .filter(Boolean),
+    );
+
+    for (const sendText of sends) {
+      if (!existingTexts.has(sendText)) {
+        await redis.rpush(k, JSON.stringify({ role: "assistant", content: sendText }));
+        existingTexts.add(sendText);
+      }
+    }
+    await redis.ltrim(k, -16, -1);
+    await redis.expire(k, config.LEAD_STATE_TTL_SECONDS);
+  } catch (err) {
+    logger.warn({ err, tenant: tenant.slug, waId }, "prospect handoff: falha ao sincronizar memória Redis");
   }
 
   await updateProspect(prospect.id, {
