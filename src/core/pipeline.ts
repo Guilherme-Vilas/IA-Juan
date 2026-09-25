@@ -142,7 +142,7 @@ export async function syncLeadStage(
   tenantId: number,
   leadId: number,
   phase: string,
-  opts: { actor?: StageActor; actorUserId?: number | null; reason?: string } = {},
+  opts: { actor?: StageActor; actorUserId?: number | null; reason?: string; silent?: boolean } = {},
 ): Promise<PipelineStageRow | null> {
   const actor = opts.actor ?? "ai";
   const cur = await pool.query<{
@@ -180,8 +180,51 @@ export async function syncLeadStage(
     actorUserId: opts.actorUserId ?? null,
     reason: opts.reason ?? "",
   });
-  await fireStageTrigger(tenantId, leadId, target.id);
+  // silent: reposicionamento em lote (backfill) nao dispara automacoes.
+  if (!opts.silent) await fireStageTrigger(tenantId, leadId, target.id);
   return target;
+}
+
+// Garante que o lead esta em alguma coluna do board. Se ja tem etapa, nao mexe
+// (quem move depois e o syncLeadStage). Sem etapa: usa a coluna da fase atual
+// ou, se a empresa nao mapeou essa fase, a primeira coluna da pipeline.
+export async function ensureLeadOnPipeline(
+  tenantId: number,
+  leadId: number,
+  opts: { actor?: StageActor; reason?: string; silent?: boolean } = {},
+): Promise<void> {
+  const cur = await pool.query<{ pipeline_stage_id: number | null; state: string }>(
+    `SELECT pipeline_stage_id, state FROM leads WHERE id = $1 AND tenant_id = $2`,
+    [leadId, tenantId],
+  );
+  const lead = cur.rows[0];
+  if (!lead || lead.pipeline_stage_id != null) return;
+
+  const moved = await syncLeadStage(tenantId, leadId, lead.state, {
+    actor: opts.actor ?? "system",
+    reason: opts.reason,
+    silent: opts.silent,
+  });
+  if (moved) return;
+
+  const first = (await getStages(tenantId))[0];
+  if (!first) return;
+  await pool.query(
+    `UPDATE leads SET pipeline_stage_id = $1, stage_entered_at = now(), sla_alerted_at = NULL, updated_at = now()
+      WHERE id = $2 AND pipeline_stage_id IS NULL`,
+    [first.id, leadId],
+  );
+  await logStageEvent({
+    tenantId,
+    leadId,
+    fromStageId: null,
+    toStageId: first.id,
+    fromState: lead.state,
+    toState: lead.state,
+    actor: opts.actor ?? "system",
+    reason: opts.reason ?? "entrada na pipeline",
+  });
+  if (!opts.silent) await fireStageTrigger(tenantId, leadId, first.id);
 }
 
 // ===== Movimento manual (arraste no board) =====

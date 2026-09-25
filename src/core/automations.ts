@@ -9,7 +9,13 @@ import { createTask } from "./tasks.js";
 import { addNote, assignLead, pickNextAssignee } from "./crm.js";
 import { setLeadStageDirect } from "./pipeline.js";
 
-export type TriggerType = "lead_created" | "stage_entered" | "lead_won" | "lead_lost" | "no_reply";
+export type TriggerType =
+  | "lead_created"
+  | "stage_entered"
+  | "lead_won"
+  | "lead_lost"
+  | "no_reply"
+  | "campaign_replied";
 export type ActionType =
   | "send_message"
   | "create_task"
@@ -180,7 +186,7 @@ export async function fireTrigger(
   tenantId: number,
   trigger: TriggerType,
   leadId: number,
-  ctx: { stage_id?: number } = {},
+  ctx: { stage_id?: number; campaign_id?: number; reply_class?: string | null } = {},
 ): Promise<void> {
   const autos = await pool.query<AutomationRow>(
     `SELECT * FROM automations WHERE tenant_id=$1 AND enabled=true AND trigger_type=$2`,
@@ -193,6 +199,14 @@ export async function fireTrigger(
     if (trigger === "stage_entered") {
       const want = a.trigger_config?.stage_id;
       if (want && Number(want) !== Number(ctx.stage_id)) continue;
+    }
+    if (trigger === "campaign_replied") {
+      // trigger_config.campaign_id: so uma campanha (vazio = todas).
+      // trigger_config.reply_classes: so essas classes de resposta (vazio = todas).
+      const wantCampaign = a.trigger_config?.campaign_id;
+      if (wantCampaign && Number(wantCampaign) !== Number(ctx.campaign_id)) continue;
+      const wantClasses = a.trigger_config?.reply_classes;
+      if (Array.isArray(wantClasses) && wantClasses.length && !wantClasses.includes(ctx.reply_class ?? "")) continue;
     }
     if (!conditionsMatch(lead, a.conditions)) continue;
     await startRun(a, lead).catch((err) => logger.error({ err, autoId: a.id }, "automation: start failed"));

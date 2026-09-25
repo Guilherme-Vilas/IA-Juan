@@ -12,6 +12,7 @@
     "worker:followup": "tsx src/workers/followup.worker.ts",
     "worker:followup:prod": "node dist/workers/followup.worker.js",
     "migrate": "tsx scripts/migrate.ts",
+    "backfill:campaign-pipeline": "tsx scripts/backfill-campaign-pipeline.ts",
     "calendar:auth": "tsx scripts/calendar-auth.ts",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },

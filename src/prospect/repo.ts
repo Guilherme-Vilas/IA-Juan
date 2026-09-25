@@ -281,6 +281,19 @@ export async function findProspectByExternalId(
   return rows[0] ?? null;
 }
 
+// Trava atomica da resposta: so UMA requisicao consegue marcar o prospect como
+// 'replied'. Duas mensagens quase juntas do lead -> a segunda nao repete o
+// handoff (evita abordagem duplicada no historico/painel e gatilho em dobro).
+export async function claimProspectReply(prospectId: number): Promise<boolean> {
+  const { rowCount } = await pool.query(
+    `UPDATE prospects
+        SET status = 'replied', replied_at = now(), next_step_at = NULL, updated_at = now()
+      WHERE id = $1 AND status NOT IN ('replied', 'opted_out')`,
+    [prospectId],
+  );
+  return (rowCount ?? 0) > 0;
+}
+
 export async function updateProspect(
   id: number,
   patch: Partial<Pick<ProspectRow, "composed_message" | "status" | "skip_reason" | "sent_at" | "replied_at" | "lead_id" | "error_msg" | "attempts" | "next_attempt_at" | "current_step" | "next_step_at" | "reply_class">>,

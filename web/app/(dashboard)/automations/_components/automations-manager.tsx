@@ -8,7 +8,9 @@ import type {
   AutomationTrigger,
   AutomationFull,
   PipelineStage,
+  ReplyClass,
 } from "@/lib/types";
+import { REPLY_CLASSES, REPLY_CLASS_LABELS } from "@/lib/types";
 import { Button } from "@/components/ui/button";
 import { Plus, Trash2, Pencil, Zap, Power } from "lucide-react";
 
@@ -18,7 +20,10 @@ const TRIGGER_LABELS: Record<AutomationTrigger, string> = {
   lead_won: "Negócio ganho",
   lead_lost: "Negócio perdido",
   no_reply: "Sem resposta",
+  campaign_replied: "Respondeu campanha",
 };
+
+export type CampaignOption = { id: number; name: string };
 const ACTION_LABELS: Record<AutomationActionType, string> = {
   send_message: "Enviar mensagem",
   create_task: "Criar tarefa",
@@ -67,10 +72,12 @@ function emptyDraft(): Draft {
 export function AutomationsManager({
   initial,
   stages,
+  campaigns,
   error,
 }: {
   initial: Automation[];
   stages: PipelineStage[];
+  campaigns: CampaignOption[];
   error: string | null;
 }) {
   const router = useRouter();
@@ -169,7 +176,7 @@ export function AutomationsManager({
       </div>
 
       {editing && (
-        <Builder draft={editing} stages={stages} onClose={() => setEditing(null)} onSaved={() => router.refresh()} />
+        <Builder draft={editing} stages={stages} campaigns={campaigns} onClose={() => setEditing(null)} onSaved={() => router.refresh()} />
       )}
     </div>
   );
@@ -178,11 +185,13 @@ export function AutomationsManager({
 function Builder({
   draft,
   stages,
+  campaigns,
   onClose,
   onSaved,
 }: {
   draft: Draft;
   stages: PipelineStage[];
+  campaigns: CampaignOption[];
   onClose: () => void;
   onSaved: () => void;
 }) {
@@ -288,6 +297,27 @@ function Builder({
                   horas
                 </label>
               )}
+              {d.trigger_type === "campaign_replied" && (
+                <select
+                  value={(d.trigger_config.campaign_id as number) ?? ""}
+                  onChange={(e) =>
+                    set({
+                      trigger_config: {
+                        ...d.trigger_config,
+                        campaign_id: e.target.value ? Number(e.target.value) : undefined,
+                      },
+                    })
+                  }
+                  className={inputCls}
+                >
+                  <option value="">Qualquer campanha</option>
+                  {campaigns.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.name}
+                    </option>
+                  ))}
+                </select>
+              )}
               {d.trigger_type === "stage_entered" && (
                 <select
                   value={(d.trigger_config.stage_id as number) ?? ""}
@@ -303,6 +333,38 @@ function Builder({
                 </select>
               )}
             </div>
+            {d.trigger_type === "campaign_replied" && (
+              <div className="mt-3">
+                <div className={labelCls}>Só quando a resposta for (vazio = qualquer):</div>
+                <div className="flex flex-wrap gap-1.5">
+                  {REPLY_CLASSES.map((k) => {
+                    const sel = ((d.trigger_config.reply_classes as ReplyClass[] | undefined) ?? []).includes(k);
+                    return (
+                      <button
+                        key={k}
+                        type="button"
+                        aria-pressed={sel}
+                        onClick={() => {
+                          const cur = (d.trigger_config.reply_classes as ReplyClass[] | undefined) ?? [];
+                          const next = sel ? cur.filter((x) => x !== k) : [...cur, k];
+                          set({ trigger_config: { ...d.trigger_config, reply_classes: next } });
+                        }}
+                        className={`rounded-md border px-2 py-1 text-xs transition-colors ${
+                          sel
+                            ? "border-accent-bronze/50 bg-accent-bronze/15 text-accent-bronze-soft"
+                            : "border-line text-ink-muted hover:text-ink"
+                        }`}
+                      >
+                        {REPLY_CLASS_LABELS[k]}
+                      </button>
+                    );
+                  })}
+                </div>
+                <p className="mt-1.5 text-[11px] text-ink-faint">
+                  A classificação é feita pela IA na primeira resposta do lead à campanha.
+                </p>
+              </div>
+            )}
             <label className="mt-3 flex items-center gap-2 text-sm text-ink-soft">
               <input
                 type="checkbox"

@@ -19,9 +19,12 @@ import {
   type Slots,
 } from "../core/db.js";
 import { redis, keys } from "../core/redis.js";
-import { syncLeadStage, getStageGoalForLead } from "../core/pipeline.js";
+import { syncLeadStage, ensureLeadOnPipeline, getStageGoalForLead } from "../core/pipeline.js";
 import { autoAssignNewLead } from "../core/crm.js";
 import { fireTrigger, cancelRunsForLead } from "../core/automations.js";
+import { consumeCampaignReply, getLeadReplyClass, resolveReplyClass } from "../prospect/campaign-reply.js";
+import { OPTOUT_CONFIRMATION } from "../prospect/suppression.js";
+import type { ReplyClass } from "../prospect/classify.js";
 import { config } from "../config.js";
 import { logger } from "../core/logger.js";
 import { executeHandoff, pauseAi } from "./handoff.js";
@@ -98,6 +101,20 @@ function shouldUseKnowledge(text: string): boolean {
   return s.length >= 40; // mensagens longas tendem a ser substantivas
 }
 
+// Como calibrar o tom conforme a reação do lead à campanha (classify.ts).
+const REPLY_CLASS_GUIDANCE: Record<ReplyClass, string> = {
+  interessado:
+    "O lead demonstrou interesse. Pode aprofundar um pouco mais (entender o objetivo e o momento dele), ainda com leveza: uma pergunta por vez, sem pular direto pra números ou reunião.",
+  neutro:
+    "Reação neutra/ambígua (ex: 'quem é?', 'oi'). Esclareça quem é e o motivo do contato em 1-2 linhas e faça UMA pergunta aberta e leve. Nada de qualificação ainda.",
+  depois:
+    "O lead pediu pra falar depois. Respeite: agradeça, pergunte qual o melhor momento (sem insistir) e use close_conversation reason=postponed. Não faça pitch.",
+  nao_interessado:
+    "O lead NÃO tem interesse. Agradeça com gentileza, deixe a porta aberta em uma linha e use close_conversation reason=not_interested. NÃO tente contornar a objeção nem insistir.",
+  opt_out:
+    "O lead pediu pra não receber mais mensagens. Confirme que não vai mais mandar mensagens, sem nenhuma oferta.",
+};
+
 function buildSystemPrompt(
   prompts: TenantPrompts,
   lead: LeadRow,
@@ -105,6 +122,7 @@ function buildSystemPrompt(
   reopenedFrom?: ClosedReason | null,
   knowledgeContext?: string,
   stageGoal?: string,
+  replyClass?: ReplyClass | null,
 ): string {
   // ===== BLOCO ESTÁVEL =====
   // Persona + config do tenant + regra de estilo. É IDÊNTICO entre os turnos de
@@ -174,6 +192,12 @@ function buildSystemPrompt(
       "4. Identifique o TEMA da mensagem da campanha (ex: consórcio, imóvel) e mantenha a conversa nesse tema. Não mude de assunto nem ofereça outro produto.",
       "5. TOM LEVE, SEM CARA DE VENDA: responda primeiro o que o lead disse, faça no máximo UMA pergunta leve e aberta, sem urgência, sem jargão e sem proposta de reunião, até ele demonstrar interesse claro. Se houver no prompt uma seção sobre leads de campanha, ela tem prioridade sobre as regras de qualificação/condução agressiva.",
     );
+    // Calibração pela classe da resposta à campanha — só no começo da conversa;
+    // depois a própria conversa diz mais que a primeira reação.
+    const calib = replyClass ? REPLY_CLASS_GUIDANCE[replyClass] : null;
+    if (calib && (lead.state === "S0_ABERTURA" || lead.state === "S1_DESCOBERTA")) {
+      variable.push(`6. LEITURA DA RESPOSTA À CAMPANHA: *${replyClass}*. ${calib}`);
+    }
   }
 
   return stable.join("\n") + "\n\n---\n\n" + variable.join("\n");
@@ -371,6 +395,12 @@ export async function runTurn(
     logger.warn({ err, tenant: tenant.slug, waId }, "crm: auto-assign falhou (seguindo)"),
   );
 
+  // CRM: todo lead que fala com a IA entra no board ja no inicio do turno —
+  // inclusive pausado ou se o LLM falhar. O avanco de coluna segue no fim do turno.
+  await ensureLeadOnPipeline(tenant.id, lead.id, { reason: "entrada na pipeline" }).catch((err) =>
+    logger.warn({ err, tenant: tenant.slug, waId }, "pipeline: entrada falhou (seguindo)"),
+  );
+
   // Automacoes: dispara cadencia de lead novo; e cancela cadencias quando o lead
   // responde (stop_on_reply) — so em inbound real, nao em retry.
   if (isNewLead) {
@@ -379,6 +409,29 @@ export async function runTurn(
     );
   } else if (!isRetry) {
     await cancelRunsForLead(tenant.id, lead.id, { onlyStopOnReply: true }).catch(() => undefined);
+  }
+
+  // "Respondeu campanha": 1º turno após o handoff. Classifica a resposta e
+  // dispara o gatilho DEPOIS do cancel acima (senão a própria resposta
+  // cancelaria a cadência recém-criada). A marca é consumida uma única vez.
+  if (!isRetry) {
+    const mark = await consumeCampaignReply(tenant.slug, waId).catch(() => null);
+    if (mark) {
+      const klass = await resolveReplyClass(tenant.id, waId, mark, userText).catch(() => null);
+      if (klass === "opt_out") {
+        await closeConversation(tenant.id, waId, "not_interested");
+        logger.info({ tenant: tenant.slug, waId, prospectId: mark.prospectId }, "campanha: opt-out via IA — IA não responde");
+        return {
+          replyText: lead.paused ? null : OPTOUT_CONFIRMATION,
+          newState: lead.state,
+          closedReason: "not_interested",
+        };
+      }
+      await fireTrigger(tenant.id, "campaign_replied", lead.id, {
+        campaign_id: mark.campaignId,
+        reply_class: klass,
+      }).catch((err) => logger.warn({ err, tenant: tenant.slug, waId }, "automations: campaign_replied falhou"));
+    }
   }
 
   // ÚNICA condição que silencia a IA: pause manual do owner.
@@ -431,7 +484,16 @@ export async function runTurn(
   const toolsForTurn = hasCatalog ? [...SDR_TOOLS, PROPERTY_TOOL] : SDR_TOOLS;
 
   const history = await loadHistory(tenant.slug, waId, lead.id);
-  const systemPrompt = buildSystemPrompt(prompts, lead, agentSettings, reopenedFrom, knowledgeContext, stageGoal);
+  const replyClass = lead.source?.startsWith("campaign:") ? await getLeadReplyClass(lead.id).catch(() => null) : null;
+  const systemPrompt = buildSystemPrompt(
+    prompts,
+    lead,
+    agentSettings,
+    reopenedFrom,
+    knowledgeContext,
+    stageGoal,
+    replyClass,
+  );
 
   const messages: ChatMessage[] = [{ role: "system", content: systemPrompt }, ...history];
 

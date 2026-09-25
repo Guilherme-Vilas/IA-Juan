@@ -256,12 +256,24 @@ export function parseWebhook(payload: unknown): EvolutionInboundMessage | null {
         ? ((p.data as Record<string, unknown>).instance as string)
         : null);
     const data = (p.data ?? p) as Record<string, unknown>;
-    const key = data.key as { id?: string; remoteJid?: string; fromMe?: boolean } | undefined;
+    const key = data.key as
+      | { id?: string; remoteJid?: string; remoteJidAlt?: string; senderPn?: string; fromMe?: boolean }
+      | undefined;
     const message = data.message as Record<string, unknown> | undefined;
     if (!instance) return null;
     if (!key?.remoteJid || !key.id) return null;
     if (key.remoteJid.endsWith("@g.us")) return null;
-    const waId = key.remoteJid.replace(/@s\.whatsapp\.net$/, "");
+    // WhatsApp novo pode endereçar o contato por LID ("123...@lid") em vez do
+    // telefone. Sem o telefone real o lead nao casa com o prospect da campanha
+    // (perde contexto e origem). Evolution manda o telefone em remoteJidAlt/senderPn.
+    let jid = key.remoteJid;
+    if (jid.endsWith("@lid")) {
+      const alt = [key.remoteJidAlt, key.senderPn, data.senderPn].find(
+        (x): x is string => typeof x === "string" && x.endsWith("@s.whatsapp.net"),
+      );
+      if (alt) jid = alt;
+    }
+    const waId = jid.replace(/@s\.whatsapp\.net$/, "");
     const pushName = typeof data.pushName === "string" ? data.pushName : undefined;
     const ts = typeof data.messageTimestamp === "number" ? data.messageTimestamp : Date.now() / 1000;
     if (!message) return null;

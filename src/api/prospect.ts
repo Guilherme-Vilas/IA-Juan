@@ -1,3 +1,4 @@
+import { getCampaignAdherence } from "../prospect/adherence.js";
 import type { FastifyInstance } from "fastify";
 import { logger } from "../core/logger.js";
 import { parseProspectsCsv } from "../prospect/csv.js";
@@ -123,6 +124,13 @@ export async function registerProspectRoutes(app: FastifyInstance) {
       await replaceSteps(c.id, [{ wait_hours: 0, template_text: body.template_text }]);
       logger.info({ tenant: req.tenantSlug, campaignId: c.id }, "admin: campaign created");
       return reply.send({ campaign: c });
+    });
+
+    // Painel de aderencia: reacao dos contatos por campanha na janela (dias).
+    scope.get("/admin/tenants/:slug/campaigns-adherence", async (req) => {
+      const raw = Number((req.query as { days?: string }).days);
+      const days = [7, 30, 90].includes(raw) ? raw : 30;
+      return getCampaignAdherence(req.tenantId!, days);
     });
 
     scope.get("/admin/tenants/:slug/campaigns/:id", async (req, reply) => {

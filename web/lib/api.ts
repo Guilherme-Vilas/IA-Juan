@@ -53,6 +53,8 @@ export function leadActionsApi(slug: string) {
 export function campaignApi(slug: string) {
   return {
     list: () => adminCall(`/admin/tenants/${slug}/campaigns`, { method: "GET" }),
+    adherence: (days: number) =>
+      adminCall(`/admin/tenants/${slug}/campaigns-adherence?days=${days}`, { method: "GET" }),
     get: (id: number) => adminCall(`/admin/tenants/${slug}/campaigns/${id}`, { method: "GET" }),
     create: (body: Record<string, unknown>) =>
       adminCall(`/admin/tenants/${slug}/campaigns`, {

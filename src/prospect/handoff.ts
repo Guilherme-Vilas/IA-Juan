@@ -1,13 +1,21 @@
-import { upsertLead, updateLead, logMessage, type Slots } from "../core/db.js";
+import { pool, upsertLead, updateLead, logMessage, type Slots } from "../core/db.js";
+import { ensureLeadOnPipeline } from "../core/pipeline.js";
+import { autoAssignNewLead } from "../core/crm.js";
 import { logger } from "../core/logger.js";
 import { config } from "../config.js";
 import { redis, keys } from "../core/redis.js";
 import { sendText } from "../core/evolution.js";
 import type { TenantRow } from "../core/tenants.js";
-import { findProspectByExternalId, getCampaignById, updateProspect, logProspectEvent } from "./repo.js";
+import {
+  claimProspectReply,
+  findProspectByExternalId,
+  getCampaignById,
+  updateProspect,
+  logProspectEvent,
+} from "./repo.js";
 import { listSendTexts } from "./steps.js";
 import { addToBlacklist, detectOptOut, OPTOUT_CONFIRMATION } from "./suppression.js";
-import { classifyReply } from "./classify.js";
+import { markCampaignReply } from "./campaign-reply.js";
 
 // Quando um waId responde, verifica se ele pertence a algum prospect ativo (sent / ready_for_manual / queued).
 // Se sim, vincula resposta ao prospect e cria/atualiza o lead com source='campaign:<id>'.
@@ -35,6 +43,10 @@ export async function handleProspectReply(
     );
     return { matched: true, optedOut: true, prospectId: prospect.id, campaignId: prospect.campaign_id };
   }
+
+  // Trava atomica: se outra requisicao (mensagem quase simultanea) ja fez o
+  // handoff deste prospect, esta segue como mensagem normal de lead.
+  if (!(await claimProspectReply(prospect.id))) return { matched: false };
 
   const campaign = await getCampaignById(prospect.campaign_id);
 
@@ -67,6 +79,20 @@ export async function handleProspectReply(
       nome: resolvedNome ?? lead.nome,
     }).catch(() => undefined);
   }
+
+  // CRM: o lead de campanha entra no board AGORA, sem depender do turno da IA
+  // terminar (se o LLM falhar/atrasar, o lead ja aparece pro corretor).
+  // Origem da campanha fica em source_detail pra filtro/relatório.
+  await pool
+    .query(`UPDATE leads SET source_detail = source_detail || $1::jsonb, updated_at = now() WHERE id = $2`, [
+      JSON.stringify({ campaign_id: prospect.campaign_id, campaign_name: campaign?.name ?? null, prospect_id: prospect.id }),
+      lead.id,
+    ])
+    .catch((err) => logger.warn({ err, tenant: tenant.slug, waId }, "prospect handoff: source_detail falhou"));
+  await autoAssignNewLead(tenant.id, lead.id, tenant.lead_distribution).catch(() => undefined);
+  await ensureLeadOnPipeline(tenant.id, lead.id, {
+    reason: campaign?.name ? `respondeu campanha: ${campaign.name}` : "respondeu campanha",
+  }).catch((err) => logger.warn({ err, tenant: tenant.slug, waId }, "prospect handoff: pipeline falhou"));
 
   // Abordagens enviadas: busca da tabela prospect_sends com fallback para a mensagem composta ou template
   let sends = await listSendTexts(prospect.id).catch(() => [] as string[]);
@@ -112,29 +138,14 @@ export async function handleProspectReply(
     logger.warn({ err, tenant: tenant.slug, waId }, "prospect handoff: falha ao sincronizar memória Redis");
   }
 
-  await updateProspect(prospect.id, {
-    status: "replied",
-    replied_at: new Date(),
-    lead_id: lead.id,
-    next_step_at: null,
-  });
+  await updateProspect(prospect.id, { lead_id: lead.id });
   await logProspectEvent(prospect.id, "replied", { leadId: lead.id });
 
-  // Classificação da resposta com IA — fire-and-forget: alimenta a métrica de
-  // resposta POSITIVA por campanha/variante e serve de rede extra de opt-out
-  // (frases que o regex não pega). Não atrasa o webhook nem a Stella.
-  void classifyReply(text)
-    .then(async (klass) => {
-      if (!klass) return;
-      await updateProspect(prospect.id, { reply_class: klass });
-      await logProspectEvent(prospect.id, "reply_classified", { class: klass });
-      if (klass === "opt_out") {
-        await addToBlacklist(tenant.id, waId, "opt_out", `campaign:${prospect.campaign_id}`);
-        await updateProspect(prospect.id, { status: "opted_out" });
-        logger.info({ tenant: tenant.slug, waId, prospectId: prospect.id }, "opt-out via classificação IA → blacklist");
-      }
-    })
-    .catch((err) => logger.warn({ err, prospectId: prospect.id }, "classificação de resposta falhou"));
+  // Classificação (interessado/neutro/depois/nao_interessado/opt_out) e gatilho
+  // "Respondeu campanha" rodam no 1º turno da IA — ver campaign-reply.ts.
+  await markCampaignReply(tenant.slug, waId, { prospectId: prospect.id, campaignId: prospect.campaign_id }).catch(
+    (err) => logger.warn({ err, tenant: tenant.slug, waId }, "prospect handoff: marca de resposta falhou"),
+  );
 
   logger.info(
     { tenant: tenant.slug, waId, prospectId: prospect.id, campaignId: prospect.campaign_id, leadId: lead.id },

@@ -9,7 +9,7 @@ import {
   CAMPAIGN_STATUS_LABELS,
   type Campaign,
 } from "@/lib/types";
-import { Plus, Send, MessageCircle, Reply } from "lucide-react";
+import { Plus, Send, MessageCircle, Reply, Activity } from "lucide-react";
 import { BlacklistButton } from "./_components/blacklist-manager";
 
 export const dynamic = "force-dynamic";
@@ -41,6 +41,12 @@ export default async function ProspectListPage() {
         subtitle={`${tenant.name} · ${campaigns.length} campanha(s)`}
         action={
           <div className="flex items-center gap-2">
+            <Link
+              href="/prospect/aderencia"
+              className="inline-flex h-9 items-center gap-1.5 rounded-md border border-line px-3 text-sm text-ink-soft hover:text-ink"
+            >
+              <Activity size={14} /> Aderência
+            </Link>
             <BlacklistButton tenantSlug={tenant.slug} />
             <Link
               href="/prospect/new"

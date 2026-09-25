@@ -119,7 +119,13 @@ export type LeadTask = {
 };
 
 // ===== Automacoes / cadencias =====
-export type AutomationTrigger = "lead_created" | "stage_entered" | "lead_won" | "lead_lost" | "no_reply";
+export type AutomationTrigger =
+  | "lead_created"
+  | "stage_entered"
+  | "lead_won"
+  | "lead_lost"
+  | "no_reply"
+  | "campaign_replied";
 export type AutomationActionType =
   | "send_message"
   | "create_task"
@@ -507,4 +513,46 @@ export const PROSPECT_STATUS_COLORS: Record<ProspectStatus, string> = {
   skipped: "bg-warning/15 text-warning",
   ready_for_manual: "bg-accent-bronze/15 text-accent-bronze-soft",
   opted_out: "bg-danger/10 text-danger",
+};
+
+// ===== Aderência de campanha =====
+export const REPLY_CLASSES = ["interessado", "depois", "neutro", "nao_interessado", "opt_out"] as const;
+export type ReplyClass = (typeof REPLY_CLASSES)[number];
+
+export const REPLY_CLASS_LABELS: Record<ReplyClass, string> = {
+  interessado: "Interessado",
+  depois: "Depois",
+  neutro: "Neutro",
+  nao_interessado: "Sem interesse",
+  opt_out: "Opt-out",
+};
+
+// Escala divergente positivo → negativo (azul · cinza · vermelho), validada
+// contra a superfície escura (#16161A): CVD ΔE ≥ 13.9, contraste ≥ 3:1.
+export const REPLY_CLASS_COLORS: Record<ReplyClass, string> = {
+  interessado: "#3F83F0",
+  depois: "#93B8F2",
+  neutro: "#6B6B75",
+  nao_interessado: "#F0A58F",
+  opt_out: "#E0534A",
+};
+
+export type AdherenceClassCounts = Record<ReplyClass, number> & { sem_classe: number };
+
+export type AdherenceRow = AdherenceClassCounts & {
+  campaign_id: number;
+  name: string;
+  status: CampaignStatus;
+  contatados: number;
+  respostas: number;
+  na_pipeline: number;
+  avancaram: number;
+  agendados: number;
+  ganhos: number;
+};
+
+export type CampaignAdherence = {
+  days: number;
+  campaigns: AdherenceRow[];
+  daily: Array<AdherenceClassCounts & { day: string }>;
 };
