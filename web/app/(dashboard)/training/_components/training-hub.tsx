@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { toastError, toastSuccess } from "@/lib/toast";
 import { Card, CardBody, CardHeader } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Modal } from "@/components/ui/modal";
@@ -314,7 +315,9 @@ function ManageModal({ onClose, onChanged }: { onClose: () => void; onChanged: (
   }
 
   async function remove(id: number) {
-    await fetch(`/api/admin-proxy/training/videos/${id}`, { method: "DELETE" });
+    if (!confirm("Excluir este vídeo de treinamento?")) return;
+    const res = await fetch(`/api/admin-proxy/training/videos/${id}`, { method: "DELETE" }).catch(() => null);
+    if (!res?.ok) toastError("Não consegui excluir o vídeo.");
     await load();
     onChanged();
   }

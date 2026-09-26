@@ -15,7 +15,7 @@ import {
 } from "../core/internal-calendar.js";
 import { listPlaybooks, setTenantPlaybook } from "../core/playbooks.js";
 import { invalidateTenantsCache } from "../core/tenants.js";
-import { getTenantPrompts, upsertTenantPrompts } from "../core/tenant-prompts.js";
+import { getTenantPrompts, upsertTenantPrompts, snapshotPrompts, listPromptVersions, restorePromptVersion } from "../core/tenant-prompts.js";
 
 function stringArray(value: unknown): string[] {
   if (!Array.isArray(value)) return [];
@@ -83,6 +83,9 @@ export async function registerSaasRoutes(app: FastifyInstance) {
         objections?: string;
         examples?: string;
       };
+      // Versiona o estado ATUAL antes de sobrescrever (dá pra voltar depois).
+      const author = req.auth?.kind === "user" ? `user:${req.auth.userId}` : "service";
+      await snapshotPrompts(req.tenantId!, author).catch(() => undefined);
       // Só atualiza os campos enviados (undefined = preserva o atual).
       await upsertTenantPrompts(req.tenantId!, {
         system: typeof body.system === "string" ? body.system : undefined,
@@ -91,6 +94,18 @@ export async function registerSaasRoutes(app: FastifyInstance) {
         examples: typeof body.examples === "string" ? body.examples : undefined,
       });
       return { ok: true };
+    });
+
+    // Histórico de versões do prompt + restauração.
+    scope.get("/admin/tenants/:slug/prompts/versions", async (req) => {
+      return { versions: await listPromptVersions(req.tenantId!) };
+    });
+    scope.post("/admin/tenants/:slug/prompts/versions/:id/restore", async (req, reply) => {
+      const id = Number((req.params as { id: string }).id);
+      const author = req.auth?.kind === "user" ? `user:${req.auth.userId}` : "service";
+      const ok = await restorePromptVersion(req.tenantId!, id, author);
+      if (!ok) return reply.code(404).send({ error: "versão não encontrada" });
+      return { ok: true, prompts: await getTenantPrompts(req.tenantId!) };
     });
 
     scope.get("/admin/tenants/:slug/working-hours", async (req) => {

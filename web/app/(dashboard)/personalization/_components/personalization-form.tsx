@@ -4,6 +4,7 @@ import { useState } from "react";
 import { Card, CardBody, CardHeader } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Save, Check } from "lucide-react";
+import { VersionHistory } from "./version-history";
 
 type Prompts = { system: string; knowledge: string; objections: string; examples: string };
 
@@ -72,11 +73,13 @@ export function PersonalizationForm({
 
   return (
     <div className="mx-auto max-w-5xl">
-      <div className="mb-5 flex items-center justify-between">
+      <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
         <p className="max-w-2xl text-[13px] text-ink-muted">
           Edite o "cérebro" do seu agente. As mudanças entram em vigor em até 5 minutos (ou na
           próxima conversa). Use linguagem clara, como se estivesse treinando um vendedor novo.
         </p>
+        <div className="flex items-center gap-2">
+        <VersionHistory tenantSlug={tenantSlug} onRestored={(p) => setPrompts(p)} />
         <Button onClick={save} disabled={busy}>
           {saved ? (
             <>
@@ -88,6 +91,7 @@ export function PersonalizationForm({
             </>
           )}
         </Button>
+        </div>
       </div>
 
       {err && (

@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { toastError, toastSuccess } from "@/lib/toast";
 import { Modal } from "@/components/ui/modal";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -81,7 +82,12 @@ function BlacklistModal({ tenantSlug, onClose }: { tenantSlug: string; onClose: 
   };
 
   const remove = async (externalId: string) => {
-    await fetch(`${base}/${encodeURIComponent(externalId)}`, { method: "DELETE" }).catch(() => undefined);
+    const res = await fetch(`${base}/${encodeURIComponent(externalId)}`, { method: "DELETE" }).catch(() => null);
+    if (!res?.ok) {
+      toastError("Não consegui remover da blacklist — o número segue bloqueado.");
+      return;
+    }
+    toastSuccess("Número liberado — pode voltar a receber campanhas.");
     await load();
   };
 

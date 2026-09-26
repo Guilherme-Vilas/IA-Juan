@@ -1,4 +1,5 @@
 import { pool } from "@/lib/db";
+import { getLeadScope, scopeSql } from "@/lib/lead-scope";
 import type { Lead, PipelineStage, TenantMember, CustomFieldDef } from "@/lib/types";
 import { Header } from "@/components/layout/header";
 import { LeadsBoard } from "./_components/leads-board";
@@ -37,13 +38,15 @@ async function getFieldDefs(tenantId: number): Promise<CustomFieldDef[]> {
 }
 
 async function getLeads(tenantId: number): Promise<Lead[]> {
+  const scope = await getLeadScope(tenantId);
+  const sc = scopeSql(scope, "leads", 2);
   const { rows } = await pool.query<Lead>(
     `SELECT * FROM leads
        WHERE tenant_id = $1
-         AND (status = 'open' OR updated_at > now() - interval '30 days')
+         AND (status = 'open' OR updated_at > now() - interval '30 days')${sc.sql}
        ORDER BY updated_at DESC
        LIMIT 500`,
-    [tenantId],
+    [tenantId, ...sc.params],
   );
   return rows;
 }

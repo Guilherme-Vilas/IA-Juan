@@ -77,3 +77,71 @@ export async function invalidatePromptsCache(tenantId: number): Promise<void> {
     /* ignore */
   }
 }
+
+// ===== Versionamento =====
+// Toda edição pelo painel guarda o estado ANTERIOR aqui (rede de segurança).
+
+export type PromptVersionRow = {
+  id: number;
+  tenant_id: number;
+  system: string;
+  knowledge: string;
+  objections: string;
+  examples: string;
+  author: string;
+  created_at: Date;
+};
+
+export async function snapshotPrompts(tenantId: number, author: string): Promise<void> {
+  const cur = await getTenantPrompts(tenantId);
+  // Nada configurado ainda → nada a versionar.
+  if (!cur.system && !cur.knowledge && !cur.objections && !cur.examples) return;
+  await pool.query(
+    `INSERT INTO tenant_prompt_versions (tenant_id, system, knowledge, objections, examples, author)
+     VALUES ($1,$2,$3,$4,$5,$6)`,
+    [tenantId, cur.system, cur.knowledge, cur.objections, cur.examples, author],
+  );
+  // Mantém as 20 mais recentes.
+  await pool.query(
+    `DELETE FROM tenant_prompt_versions
+      WHERE tenant_id = $1 AND id NOT IN (
+        SELECT id FROM tenant_prompt_versions WHERE tenant_id = $1 ORDER BY created_at DESC LIMIT 20
+      )`,
+    [tenantId],
+  );
+}
+
+export async function listPromptVersions(tenantId: number, limit = 20): Promise<
+  Array<Pick<PromptVersionRow, "id" | "author" | "created_at"> & { chars: number }>
+> {
+  const { rows } = await pool.query<Pick<PromptVersionRow, "id" | "author" | "created_at"> & { chars: string }>(
+    `SELECT id, author, created_at,
+            (length(system) + length(knowledge) + length(objections) + length(examples))::text AS chars
+       FROM tenant_prompt_versions
+      WHERE tenant_id = $1 ORDER BY created_at DESC LIMIT $2`,
+    [tenantId, limit],
+  );
+  return rows.map((r) => ({ ...r, chars: Number(r.chars) }));
+}
+
+export async function restorePromptVersion(
+  tenantId: number,
+  versionId: number,
+  author: string,
+): Promise<boolean> {
+  const { rows } = await pool.query<PromptVersionRow>(
+    `SELECT * FROM tenant_prompt_versions WHERE id = $1 AND tenant_id = $2`,
+    [versionId, tenantId],
+  );
+  const v = rows[0];
+  if (!v) return false;
+  // O estado atual também vira versão — restaurar nunca perde nada.
+  await snapshotPrompts(tenantId, `${author} (antes de restaurar)`);
+  await upsertTenantPrompts(tenantId, {
+    system: v.system,
+    knowledge: v.knowledge,
+    objections: v.objections,
+    examples: v.examples,
+  });
+  return true;
+}

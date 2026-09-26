@@ -27,6 +27,14 @@ async function seedPrompts() {
       logger.warn({ tenant: t.slug, dir }, "seed: prompt dir não existe, pulando");
       continue;
     }
+    // NÃO sobrescreve prompts existentes: edições feitas pelo painel (e o
+    // histórico de versões) sobrevivem ao deploy. Seed é só pro tenant novo.
+    // Pra forçar a recarga dos .md: SEED_FORCE_PROMPTS=true.
+    const existing = await pool.query(`SELECT 1 FROM tenant_prompts WHERE tenant_id = $1 AND system <> ''`, [t.id]);
+    if ((existing.rowCount ?? 0) > 0 && process.env.SEED_FORCE_PROMPTS !== "true") {
+      logger.info({ tenant: t.slug }, "seed: prompts já existem no banco — preservando (SEED_FORCE_PROMPTS=true força)");
+      continue;
+    }
     await upsertTenantPrompts(t.id, {
       system: readMd(dir, "system.md"),
       knowledge: readMd(dir, "knowledge.md"),

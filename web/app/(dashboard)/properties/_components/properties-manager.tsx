@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { toastError, toastSuccess } from "@/lib/toast";
 import { useRouter } from "next/navigation";
 import type { Property } from "@/lib/types";
 import { Button } from "@/components/ui/button";
@@ -53,7 +54,12 @@ export function PropertiesManager({
 
   const remove = async (id: number) => {
     if (!confirm("Remover este imóvel?")) return;
-    await fetch(`/api/properties/${id}`, { method: "DELETE" });
+    const res = await fetch(`/api/properties/${id}`, { method: "DELETE" }).catch(() => null);
+    if (!res?.ok) {
+      toastError("Não consegui remover o imóvel — tente de novo.");
+      return;
+    }
+    toastSuccess("Imóvel removido.");
     router.refresh();
   };
 

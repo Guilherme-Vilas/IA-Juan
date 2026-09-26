@@ -7,6 +7,18 @@ import { LeadDrawer } from "./lead-drawer";
 import { StageEditor } from "./stage-editor";
 import { Button } from "@/components/ui/button";
 import { Search, Settings2, Hand, Trophy, XCircle } from "lucide-react";
+import {
+  DndContext,
+  DragOverlay,
+  PointerSensor,
+  TouchSensor,
+  useSensor,
+  useSensors,
+  useDraggable,
+  useDroppable,
+  type DragEndEvent,
+  type DragStartEvent,
+} from "@dnd-kit/core";
 import { toastError, toastSuccess } from "@/lib/toast";
 import { usePolling } from "@/lib/use-polling";
 
@@ -73,7 +85,14 @@ export function LeadsBoard({
   const [assigneeFilter, setAssigneeFilter] = useState<string>("");
   const [scoreFilter, setScoreFilter] = useState<string>("");
   const [editing, setEditing] = useState(false);
-  const [dragOver, setDragOver] = useState<number | null>(null);
+  const [activeDrag, setActiveDrag] = useState<string | null>(null);
+
+  // Sensores: pointer preserva o clique (só arrasta após 6px) e touch exige
+  // segurar 200ms — assim dá pra ROLAR a coluna no celular sem arrastar card.
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
+    useSensor(TouchSensor, { activationConstraint: { delay: 200, tolerance: 8 } }),
+  );
   const [lostPrompt, setLostPrompt] = useState<{ waId: string; stageId: number } | null>(null);
   const [lostReason, setLostReason] = useState("");
 
@@ -140,10 +159,16 @@ export function LeadsBoard({
       });
   }
 
-  function handleDrop(stageId: number, e: React.DragEvent) {
-    e.preventDefault();
-    setDragOver(null);
-    const waId = e.dataTransfer.getData("text/plain");
+  function onDragStart(e: DragStartEvent) {
+    setActiveDrag(String(e.active.id));
+  }
+
+  function onDragEnd(e: DragEndEvent) {
+    setActiveDrag(null);
+    const waId = String(e.active.id);
+    const overId = e.over?.id;
+    if (overId == null) return;
+    const stageId = Number(overId);
     const lead = leads.find((l) => l.wa_id === waId);
     if (!lead || stageOf(lead) === stageId) return;
     const stage = stages.find((s) => s.id === stageId);
@@ -221,25 +246,12 @@ export function LeadsBoard({
         </div>
       </div>
 
+      <DndContext sensors={sensors} onDragStart={onDragStart} onDragEnd={onDragEnd} onDragCancel={() => setActiveDrag(null)}>
       <div className="flex flex-1 gap-3 overflow-x-auto px-4 py-4">
         {stages.map((stage, si) => {
           const col = visible.filter((l) => stageOf(l) === stage.id);
           return (
-            <div
-              key={stage.id}
-              onDragOver={(e) => {
-                e.preventDefault();
-                setDragOver(stage.id);
-              }}
-              onDragLeave={() => setDragOver((s) => (s === stage.id ? null : s))}
-              onDrop={(e) => handleDrop(stage.id, e)}
-              style={{ animationDelay: `${si * 60}ms` }}
-              className={`flex h-full w-72 shrink-0 animate-fade-up flex-col rounded-xl border bg-canvas-surface/45 shadow-card backdrop-blur-sm transition-all duration-200 ${
-                dragOver === stage.id
-                  ? "scale-[1.01] border-accent-bronze/60 bg-accent-bronze/[0.05] shadow-glow-bronze-strong"
-                  : "border-line/70"
-              }`}
-            >
+            <DroppableColumn key={stage.id} stageId={stage.id} animationDelay={si * 60}>
               <div className="flex items-center justify-between border-b border-line/70 px-3 py-2.5">
                 <div className="flex items-center gap-2">
                   <span
@@ -269,14 +281,7 @@ export function LeadsBoard({
                     {col.map((l) => {
                       const { label, stale } = ageInfo(l, stage);
                       return (
-                        <div
-                          key={l.wa_id}
-                          draggable
-                          onDragStart={(e) => e.dataTransfer.setData("text/plain", l.wa_id)}
-                          className={`cursor-grab active:cursor-grabbing ${
-                            l.stage_manual ? "rounded-lg ring-1 ring-accent-bronze/40" : ""
-                          }`}
-                        >
+                        <DraggableCard key={l.wa_id} waId={l.wa_id} manual={l.stage_manual} dragging={activeDrag === l.wa_id}>
                           <LeadCard
                             lead={l}
                             onClick={() => setSelected(l.wa_id)}
@@ -286,16 +291,32 @@ export function LeadsBoard({
                               l.assigned_user_id ? memberById.get(l.assigned_user_id)?.name : undefined
                             }
                           />
-                        </div>
+                        </DraggableCard>
                       );
                     })}
                   </div>
                 )}
               </div>
-            </div>
+            </DroppableColumn>
           );
         })}
       </div>
+
+      {/* preview do card durante o arraste (funciona igual no touch) */}
+      <DragOverlay dropAnimation={null}>
+        {activeDrag
+          ? (() => {
+              const l = leads.find((x) => x.wa_id === activeDrag);
+              if (!l) return null;
+              return (
+                <div className="w-64 rotate-2 opacity-95 shadow-elevated">
+                  <LeadCard lead={l} onClick={() => undefined} ageLabel="" stale={false} />
+                </div>
+              );
+            })()
+          : null}
+      </DragOverlay>
+      </DndContext>
 
       <LeadDrawer
         waId={selected}
@@ -366,6 +387,61 @@ export function LeadsBoard({
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+
+// Coluna que aceita soltar cards (dnd-kit) — realça quando o card está sobre ela.
+function DroppableColumn({
+  stageId,
+  animationDelay,
+  children,
+}: {
+  stageId: number;
+  animationDelay: number;
+  children: React.ReactNode;
+}) {
+  const { setNodeRef, isOver } = useDroppable({ id: stageId });
+  return (
+    <div
+      ref={setNodeRef}
+      style={{ animationDelay: `${animationDelay}ms` }}
+      className={`flex h-full w-72 shrink-0 animate-fade-up flex-col rounded-xl border bg-canvas-surface/45 shadow-card backdrop-blur-sm transition-all duration-200 ${
+        isOver
+          ? "scale-[1.01] border-accent-bronze/60 bg-accent-bronze/[0.05] shadow-glow-bronze-strong"
+          : "border-line/70"
+      }`}
+    >
+      {children}
+    </div>
+  );
+}
+
+// Card arrastável (pointer E touch — segurar 200ms no celular). O clique
+// continua abrindo o drawer: o sensor só ativa o arraste após 6px de movimento.
+function DraggableCard({
+  waId,
+  manual,
+  dragging,
+  children,
+}: {
+  waId: string;
+  manual: boolean;
+  dragging: boolean;
+  children: React.ReactNode;
+}) {
+  const { setNodeRef, attributes, listeners } = useDraggable({ id: waId });
+  return (
+    <div
+      ref={setNodeRef}
+      {...attributes}
+      {...listeners}
+      className={`touch-manipulation cursor-grab active:cursor-grabbing ${dragging ? "opacity-30" : ""} ${
+        manual ? "rounded-lg ring-1 ring-accent-bronze/40" : ""
+      }`}
+    >
+      {children}
     </div>
   );
 }

@@ -5,6 +5,7 @@ import { Badge } from "@/components/ui/badge";
 import { Card, CardBody, CardHeader } from "@/components/ui/card";
 import { pool } from "@/lib/db";
 import { getCurrentTenant } from "@/lib/tenant";
+import { getLeadScope, scopeSql } from "@/lib/lead-scope";
 import type { Lead } from "@/lib/types";
 import { formatRelative } from "@/lib/utils";
 
@@ -13,6 +14,8 @@ export const dynamic = "force-dynamic";
 type InboxLead = Lead & { last_message: string | null };
 
 async function getInboxLeads(tenantId: number): Promise<InboxLead[]> {
+  const scope = await getLeadScope(tenantId);
+  const sc = scopeSql(scope, "l", 2);
   const { rows } = await pool.query<InboxLead>(
     `SELECT l.*,
             lm.content AS last_message
@@ -31,12 +34,12 @@ async function getInboxLeads(tenantId: number): Promise<InboxLead[]> {
           OR l.paused = true
           OR l.score >= 70
           OR (l.last_user_at IS NOT NULL AND (l.last_assistant_at IS NULL OR l.last_user_at > l.last_assistant_at))
-        )
+        )${sc.sql}
       ORDER BY
         CASE WHEN l.state = 'HANDOFF' THEN 0 WHEN l.paused THEN 1 WHEN l.score >= 70 THEN 2 ELSE 3 END,
         l.updated_at DESC
       LIMIT 100`,
-    [tenantId],
+    [tenantId, ...sc.params],
   );
   return rows;
 }

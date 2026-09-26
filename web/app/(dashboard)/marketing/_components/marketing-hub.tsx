@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { toastError, toastSuccess } from "@/lib/toast";
 import { usePolling } from "@/lib/use-polling";
 import { Card, CardBody, CardHeader } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -210,7 +211,12 @@ function CampaignsTab({
   };
 
   const remove = async (id: number) => {
-    await fetch(`/api/admin-proxy/marketing/campaigns/${id}`, { method: "DELETE" }).catch(() => undefined);
+    if (!confirm("Excluir esta campanha de e-mail? Isso não pode ser desfeito.")) return;
+    const res = await fetch(`/api/admin-proxy/marketing/campaigns/${id}`, { method: "DELETE" }).catch(() => null);
+    if (!res?.ok) {
+      toastError("Não consegui excluir a campanha.");
+      return;
+    }
     onChanged();
   };
 
@@ -376,7 +382,12 @@ function ContactsTab({
   };
 
   const remove = async (id: number) => {
-    await fetch(`/api/admin-proxy/marketing/contacts/${id}`, { method: "DELETE" }).catch(() => undefined);
+    if (!confirm("Remover este contato da lista?")) return;
+    const res = await fetch(`/api/admin-proxy/marketing/contacts/${id}`, { method: "DELETE" }).catch(() => null);
+    if (!res?.ok) {
+      toastError("Não consegui remover o contato.");
+      return;
+    }
     onChanged();
   };
 
