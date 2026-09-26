@@ -10,7 +10,8 @@ import { ActionsBar } from "./actions-bar";
 import { StageTimeline } from "./stage-timeline";
 import { LeadCrmBar, NotesPanel, TasksPanel, CustomFieldsValues } from "./crm-panels";
 import { Badge } from "@/components/ui/badge";
-import { STATE_COLORS, STATE_LABELS, type TenantMember, type CustomFieldDef } from "@/lib/types";
+import { usePolling } from "@/lib/use-polling";
+import { STATE_COLORS, STATE_LABELS, type TenantMember, type CustomFieldDef, REASON_LABELS } from "@/lib/types";
 import { Hand } from "lucide-react";
 
 export function LeadDrawer({
@@ -48,10 +49,9 @@ export function LeadDrawer({
   useEffect(() => {
     if (!waId) return;
     refresh();
-    const id = setInterval(refresh, 4000);
-    return () => clearInterval(id);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [waId]);
+  usePolling(refresh, 4000, !!waId);
 
   return (
     <Sheet open={!!waId} onOpenChange={(v) => !v && onClose()}>
@@ -78,7 +78,7 @@ export function LeadDrawer({
                       : "bg-danger/15 text-danger"
                   }
                 >
-                  {lead.status}
+                  {lead.status === "open" ? "Conversa aberta" : "Conversa encerrada"}
                 </Badge>
                 {lead.paused && (
                   <Badge className="bg-warning/15 text-warning">IA pausada</Badge>
@@ -148,6 +148,13 @@ export function LeadDrawer({
   );
 }
 
+function sourceLabel(source: string | null): string {
+  if (!source) return "Orgânico (chegou no WhatsApp)";
+  if (source.startsWith("campaign:")) return "Campanha de prospecção";
+  if (source === "captura") return "Captura (site/formulário)";
+  return source;
+}
+
 function Info({ lead }: { lead: Lead }) {
   const row = (k: string, v: React.ReactNode) => (
     <div className="flex items-center justify-between border-b border-line py-2">
@@ -158,10 +165,10 @@ function Info({ lead }: { lead: Lead }) {
   return (
     <div className="space-y-1 pb-4">
       {row("WhatsApp", lead.wa_id)}
-      {row("Source", lead.source ?? "—")}
-      {row("Estado FSM", lead.state)}
-      {row("Status", lead.status)}
-      {row("Closed reason", lead.closed_reason ?? "—")}
+      {row("Origem", sourceLabel(lead.source))}
+      {row("Fase da conversa", STATE_LABELS[lead.state] ?? lead.state)}
+      {row("Situação", lead.status === "open" ? "Aberta" : "Encerrada")}
+      {row("Motivo do encerramento", lead.closed_reason ? REASON_LABELS[lead.closed_reason] ?? lead.closed_reason : "—")}
       {row("Criado em", new Date(lead.created_at).toLocaleString("pt-BR"))}
       {row("Atualizado", new Date(lead.updated_at).toLocaleString("pt-BR"))}
       {row("Última msg lead", lead.last_user_at ? new Date(lead.last_user_at).toLocaleString("pt-BR") : "—")}

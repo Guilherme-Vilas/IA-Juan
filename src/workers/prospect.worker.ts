@@ -6,8 +6,9 @@ import { composeWithTemplate } from "../prospect/compose.js";
 import { listSteps, pickVariant, recordSend } from "../prospect/steps.js";
 import { tickAllCampaigns } from "../prospect/dispatcher.js";
 import { scanSlaBreaches } from "../core/sla.js";
+import { scanAppointmentReminders } from "../core/appointments.js";
 import { scanTaskReminders } from "../core/tasks.js";
-import { advanceRuns, scanNoReplyAutomations } from "../core/automations.js";
+import { advanceRuns, scanNoReplyAutomations, scanDormantAutomations } from "../core/automations.js";
 import {
   getCampaignById,
   getProspect,
@@ -200,9 +201,20 @@ const tickWorker = new Worker<ProspectTickJob>(
     // e lembrar tarefas vencidas.
     await scanSlaBreaches().catch((err) => logger.error({ err }, "sla scan fatal"));
     await scanTaskReminders().catch((err) => logger.error({ err }, "task reminder scan fatal"));
+    // Lembretes de reunião pro lead (24h/1h) + cutucada pós-reunião pro dono.
+    await scanAppointmentReminders().catch((err) => logger.error({ err }, "appointment reminder scan fatal"));
     // Motor de automacoes: inicia cadencias de no-reply e avanca os passos vencidos.
     await scanNoReplyAutomations().catch((err) => logger.error({ err }, "automations no_reply scan fatal"));
+    await scanDormantAutomations().catch((err) => logger.error({ err }, "automations lead_dormant scan fatal"));
     await advanceRuns().catch((err) => logger.error({ err }, "automations advance fatal"));
+    // Resumo semanal do funil pro dono (segunda de manhã, hora local).
+    try {
+      const { listTenants } = await import("../core/tenants.js");
+      const { sendWeeklyDigests } = await import("../core/reports.js");
+      await sendWeeklyDigests(await listTenants());
+    } catch (err) {
+      logger.error({ err }, "weekly digest fatal");
+    }
     // Demo pública: sessões são efêmeras — limpa leads da demo com +24h.
     const { cleanupDemoLeads } = await import("../api/demo.js");
     await cleanupDemoLeads().catch((err) => logger.error({ err }, "demo cleanup fatal"));

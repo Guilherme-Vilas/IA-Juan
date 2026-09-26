@@ -1,7 +1,7 @@
 import { pool } from "./db.js";
 import { logger } from "./logger.js";
 import { getTenantById } from "./tenants.js";
-import { sendText } from "./evolution.js";
+import { notifyLeadOwner } from "./notify.js";
 
 export type LeadTask = {
   id: number;
@@ -71,10 +71,11 @@ export async function scanTaskReminders(limit = 50): Promise<number> {
     id: number;
     tenant_id: number;
     title: string;
+    lead_id: number;
     wa_id: string;
     nome: string | null;
   }>(
-    `SELECT t.id, t.tenant_id, t.title, l.wa_id, l.nome
+    `SELECT t.id, t.tenant_id, t.title, l.id AS lead_id, l.wa_id, l.nome
        FROM lead_tasks t
        JOIN leads l ON l.id = t.lead_id
       WHERE t.done_at IS NULL
@@ -88,11 +89,15 @@ export async function scanTaskReminders(limit = 50): Promise<number> {
   let notified = 0;
   for (const r of rows) {
     const tenant = await getTenantById(r.tenant_id);
-    if (!tenant?.owner_whatsapp_e164) continue;
+    if (!tenant?.owner_whatsapp_e164) {
+      // Sem canal de alerta: marca pra não entupir o LIMIT do scan.
+      await pool.query(`UPDATE lead_tasks SET reminded_at = now() WHERE id = $1`, [r.id]).catch(() => undefined);
+      continue;
+    }
     const who = r.nome || r.wa_id;
     const text = `🔔 Tarefa vencida: *${r.title}* (lead ${who}).`;
     try {
-      await sendText(tenant, tenant.owner_whatsapp_e164, text);
+      await notifyLeadOwner(tenant, r.lead_id, text);
       await pool.query(`UPDATE lead_tasks SET reminded_at = now() WHERE id = $1`, [r.id]);
       notified++;
     } catch (err) {

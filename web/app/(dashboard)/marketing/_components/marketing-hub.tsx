@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { usePolling } from "@/lib/use-polling";
 import { Card, CardBody, CardHeader } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Field, Input, Textarea } from "@/components/ui/input";
@@ -77,9 +78,8 @@ export function MarketingHub() {
 
   useEffect(() => {
     load();
-    const id = setInterval(load, 5000);
-    return () => clearInterval(id);
   }, [load]);
+  usePolling(load, 5000);
 
   return (
     <div className="mx-auto max-w-4xl space-y-4">

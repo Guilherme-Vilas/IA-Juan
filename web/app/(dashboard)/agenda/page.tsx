@@ -3,7 +3,9 @@ import { Card, CardBody, CardHeader } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { pool } from "@/lib/db";
 import { getCurrentTenant } from "@/lib/tenant";
+import Link from "next/link";
 import { Phone, Video } from "lucide-react";
+import { AppointmentActions } from "./_components/appointment-actions";
 import { GoogleCalendarCard } from "./_components/google-calendar-card";
 import { InternalCalendarCard } from "./_components/internal-calendar-card";
 import type { CalendarBlock, WorkingHour } from "@/lib/types";
@@ -29,7 +31,7 @@ async function getAppointments(tenantId: number): Promise<Appointment[]> {
        FROM appointments a
        JOIN leads l ON l.id = a.lead_id
       WHERE a.tenant_id = $1
-        AND a.scheduled_at > now() - interval '2 days'
+        AND a.scheduled_at > now() - interval '14 days'
       ORDER BY a.scheduled_at ASC`,
     [tenantId],
   );
@@ -71,6 +73,15 @@ async function getBlocks(tenantId: number): Promise<CalendarBlock[]> {
   }));
 }
 
+const STATUS_UI: Record<string, { label: string; cls: string }> = {
+  scheduled: { label: "Agendada", cls: "bg-info/15 text-info" },
+  confirmed: { label: "Confirmada", cls: "bg-success/15 text-success" },
+  completed: { label: "Realizada", cls: "bg-success/20 text-success" },
+  no_show: { label: "Não compareceu", cls: "bg-warning/15 text-warning" },
+  cancelled: { label: "Cancelada", cls: "bg-danger/15 text-danger" },
+};
+const PROVIDER_LABEL: Record<string, string> = { internal: "Agenda interna", google: "Google Calendar" };
+
 export default async function AgendaPage() {
   const tenant = await getCurrentTenant();
   const items = await getAppointments(tenant.id);
@@ -88,10 +99,7 @@ export default async function AgendaPage() {
   return (
     <>
       <Header title="Agenda" subtitle={`${tenant.name} · ${items.length} agendamentos`} />
-      <div className="flex-1 space-y-4 overflow-y-auto px-6 py-4">
-        <GoogleCalendarCard tenantSlug={tenant.slug} />
-        <InternalCalendarCard tenantSlug={tenant.slug} workingHours={workingHours} blocks={blocks} />
-
+      <div className="flex-1 space-y-4 overflow-y-auto px-4 py-4 md:px-6">
         {Object.entries(byDay).map(([day, list]) => (
           <Card key={day}>
             <CardHeader>
@@ -99,7 +107,7 @@ export default async function AgendaPage() {
             </CardHeader>
             <CardBody className="divide-y divide-line">
               {list.map((a) => (
-                <div key={a.id} className="flex items-center gap-3 py-2">
+                <div key={a.id} className="flex flex-wrap items-center gap-3 py-2">
                   <div className="w-16 text-center">
                     <div className="text-lg font-semibold text-accent-bronze">
                       {new Date(a.scheduled_at).toLocaleTimeString("pt-BR", {
@@ -108,8 +116,13 @@ export default async function AgendaPage() {
                       })}
                     </div>
                   </div>
-                  <div className="flex-1">
-                    <div className="font-medium">{a.nome ?? a.wa_id}</div>
+                  <div className="min-w-0 flex-1">
+                    <Link
+                      href={`/leads?lead=${encodeURIComponent(a.wa_id)}`}
+                      className="font-medium text-ink hover:text-accent-bronze-soft"
+                    >
+                      {a.nome ?? a.wa_id}
+                    </Link>
                     <div className="text-xs text-ink-muted">{a.wa_id}</div>
                   </div>
                   <Badge className="bg-canvas-surface-2 text-ink">
@@ -123,8 +136,13 @@ export default async function AgendaPage() {
                       </>
                     )}
                   </Badge>
-                  <Badge className="bg-success/15 text-success">{a.status}</Badge>
-                  <Badge className="bg-canvas-surface-2 text-ink">{a.calendar_provider}</Badge>
+                  <Badge className={(STATUS_UI[a.status] ?? STATUS_UI.scheduled!).cls}>
+                    {(STATUS_UI[a.status] ?? STATUS_UI.scheduled!).label}
+                  </Badge>
+                  <Badge className="hidden bg-canvas-surface-2 text-ink md:inline-flex">
+                    {PROVIDER_LABEL[a.calendar_provider] ?? a.calendar_provider}
+                  </Badge>
+                  <AppointmentActions tenantSlug={tenant.slug} appointmentId={a.id} status={a.status} />
                 </div>
               ))}
             </CardBody>
@@ -135,6 +153,10 @@ export default async function AgendaPage() {
             Sem agendamentos por enquanto.
           </div>
         )}
+
+        {/* Configuração da agenda fica DEPOIS dos compromissos — o dia a dia primeiro. */}
+        <GoogleCalendarCard tenantSlug={tenant.slug} />
+        <InternalCalendarCard tenantSlug={tenant.slug} workingHours={workingHours} blocks={blocks} />
       </div>
     </>
   );

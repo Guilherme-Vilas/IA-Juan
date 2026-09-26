@@ -21,12 +21,12 @@ export async function Header({
   }
 
   return (
-    <header className="glass hairline-b sticky top-0 z-20 flex h-16 items-center justify-between px-8">
-      <div className="animate-fade-up">
-        <h1 className="font-serif text-xl tracking-tight text-ink">{title}</h1>
-        {subtitle && <p className="mt-0.5 text-xs text-ink-muted">{subtitle}</p>}
+    <header className="glass hairline-b sticky top-0 z-20 flex min-h-16 flex-wrap items-center justify-between gap-2 px-4 py-2 md:px-8">
+      <div className="min-w-0 animate-fade-up">
+        <h1 className="truncate font-serif text-lg tracking-tight text-ink md:text-xl">{title}</h1>
+        {subtitle && <p className="mt-0.5 hidden truncate text-xs text-ink-muted sm:block">{subtitle}</p>}
       </div>
-      <div className="flex items-center gap-3">
+      <div className="flex flex-wrap items-center gap-2 md:gap-3">
         {action}
         {tenants.length > 0 && <TenantSelector tenants={tenants} currentSlug={currentSlug} />}
       </div>

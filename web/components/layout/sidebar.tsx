@@ -1,8 +1,11 @@
 "use client";
 
 import Link from "next/link";
+import { useEffect, useState } from "react";
 import { usePathname } from "next/navigation";
 import {
+  Menu,
+  X,
   LayoutDashboard,
   KanbanSquare,
   Calendar,
@@ -12,7 +15,6 @@ import {
   Send,
   Server,
   Building2,
-  BookOpen,
   Sparkles,
   Zap,
   Library,
@@ -69,7 +71,6 @@ const groups: NavGroup[] = [
       { href: "/users", label: "Usuários", icon: Users, superadmin: true },
       { href: "/invites", label: "Convites", icon: Ticket, superadmin: true },
       { href: "/marketing", label: "Marketing", icon: Megaphone, superadmin: true },
-      { href: "/playbooks", label: "Playbooks", icon: BookOpen },
       { href: "/training", label: "Treinamentos", icon: GraduationCap, training: true },
       { href: "/settings", label: "Configurações", icon: Settings },
     ],
@@ -89,7 +90,7 @@ export function Sidebar({
 }) {
   const pathname = usePathname();
   return (
-    <aside className="relative flex h-full w-[248px] shrink-0 flex-col border-r border-line/80 bg-canvas-deep/70 px-3 py-5 backdrop-blur-2xl">
+    <aside className="relative hidden h-full w-[248px] shrink-0 flex-col border-r border-line/80 bg-canvas-deep/70 px-3 py-5 backdrop-blur-2xl md:flex">
       {/* véu bronze no topo — a marca irradia */}
       <div
         aria-hidden
@@ -177,5 +178,94 @@ export function Sidebar({
         </div>
       </div>
     </aside>
+  );
+}
+
+
+// ===== Mobile: topbar com hambúrguer + drawer de navegação =====
+// O corretor usa o painel do CELULAR — sem isso, a sidebar fixa de 248px
+// tornava o app inutilizável em telas pequenas.
+export function MobileTopbar(props: {
+  isSuperadmin?: boolean;
+  showTraining?: boolean;
+  userLabel?: string;
+}) {
+  const { isSuperadmin = false, showTraining = false, userLabel = "Usuário" } = props;
+  const [open, setOpen] = useState(false);
+  const pathname = usePathname();
+
+  // fecha o menu ao navegar
+  useEffect(() => setOpen(false), [pathname]);
+
+  return (
+    <>
+      <div className="glass hairline-b sticky top-0 z-40 flex h-12 shrink-0 items-center justify-between px-3 md:hidden">
+        <div className="flex items-center gap-2">
+          <LogoMark className="h-7 w-7 border border-accent-bronze/30" />
+          <span className="font-serif text-[15px] text-ink">Vita OS</span>
+        </div>
+        <button
+          aria-label={open ? "Fechar menu" : "Abrir menu"}
+          aria-expanded={open}
+          onClick={() => setOpen((v) => !v)}
+          className="rounded-md p-2 text-ink-soft hover:bg-canvas-surface-2 hover:text-ink"
+        >
+          {open ? <X size={18} /> : <Menu size={18} />}
+        </button>
+      </div>
+
+      {open && (
+        <div className="fixed inset-0 z-50 md:hidden">
+          <div className="absolute inset-0 bg-black/60" onClick={() => setOpen(false)} aria-hidden />
+          <nav
+            aria-label="Menu principal"
+            className="absolute inset-y-0 left-0 flex w-[280px] flex-col overflow-y-auto border-r border-line bg-canvas-deep px-3 py-4"
+          >
+            <div className="mb-3 flex items-center justify-between px-2">
+              <div className="flex items-center gap-2">
+                <LogoMark className="h-8 w-8 border border-accent-bronze/30" />
+                <span className="font-serif text-ink">Vita OS</span>
+              </div>
+              <button aria-label="Fechar menu" onClick={() => setOpen(false)} className="p-1.5 text-ink-muted">
+                <X size={16} />
+              </button>
+            </div>
+            {groups.map((group, gi) => (
+              <div key={gi} className="mb-1">
+                {group.label && (
+                  <div className="px-2.5 pb-1 pt-3 text-[10px] font-medium uppercase tracking-[0.14em] text-ink-faint">
+                    {group.label}
+                  </div>
+                )}
+                {group.items
+                  .filter((it) => (!it.superadmin || isSuperadmin) && (!it.training || showTraining))
+                  .map(({ href, label, icon: Icon }) => {
+                    const active = pathname.startsWith(href);
+                    return (
+                      <Link
+                        key={href}
+                        href={href}
+                        className={cn(
+                          "flex items-center gap-2.5 rounded-md px-2.5 py-2.5 text-sm",
+                          active ? "bg-canvas-surface text-ink" : "text-ink-muted hover:text-ink",
+                        )}
+                      >
+                        <Icon size={17} strokeWidth={1.75} className={active ? "text-accent-bronze-soft" : ""} />
+                        {label}
+                      </Link>
+                    );
+                  })}
+              </div>
+            ))}
+            <div className="mt-auto flex items-center justify-between border-t border-line px-2 pt-3">
+              <span className="truncate text-xs text-ink-soft">{userLabel}</span>
+              <a href="/api/auth/logout" className="flex items-center gap-1.5 text-xs text-ink-muted hover:text-danger">
+                <LogOut size={13} /> Sair
+              </a>
+            </div>
+          </nav>
+        </div>
+      )}
+    </>
   );
 }

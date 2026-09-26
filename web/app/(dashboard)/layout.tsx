@@ -1,5 +1,6 @@
 import { redirect } from "next/navigation";
-import { Sidebar } from "@/components/layout/sidebar";
+import { Sidebar, MobileTopbar } from "@/components/layout/sidebar";
+import { Toaster } from "@/components/ui/toaster";
 import { HelpAssistant } from "@/components/help-assistant";
 import { WhatsappAlert } from "@/components/whatsapp-alert";
 import { getSession } from "@/lib/session";
@@ -23,7 +24,12 @@ export default async function DashboardLayout({ children }: { children: React.Re
 
   const firstTenant = session.tenants[0];
   return (
-    <div className="flex h-screen overflow-hidden">
+    <div className="flex h-screen flex-col overflow-hidden md:flex-row">
+      <MobileTopbar
+        isSuperadmin={session.is_superadmin}
+        showTraining={showTraining}
+        userLabel={firstTenant?.name ?? (session.is_superadmin ? "Administrador" : "Usuário")}
+      />
       <Sidebar
         isSuperadmin={session.is_superadmin}
         showTraining={showTraining}
@@ -35,6 +41,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
       {tenantSlug && <HelpAssistant tenantSlug={tenantSlug} />}
       {/* alerta global: WhatsApp desconectado + reconexão por QR no painel */}
       {tenantSlug && <WhatsappAlert tenantSlug={tenantSlug} />}
+      <Toaster />
     </div>
   );
 }

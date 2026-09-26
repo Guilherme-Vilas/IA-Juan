@@ -91,6 +91,12 @@ export async function registerAuth(app: FastifyInstance) {
       reply.code(403).send({ error: "forbidden: no access to this tenant" });
       return;
     }
+    // Papel de verdade: viewer é SOMENTE LEITURA — qualquer mutação em rota de
+    // tenant é bloqueada aqui, de uma vez, pra todas as rotas.
+    if (role === "viewer" && req.method !== "GET" && req.method !== "HEAD") {
+      reply.code(403).send({ error: "forbidden: seu papel é somente leitura" });
+      return;
+    }
     req.tenantId = tenant.id;
     req.tenantSlug = tenant.slug;
     req.role = role;

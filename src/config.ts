@@ -76,6 +76,8 @@ const schema = z.object({
   DEBOUNCE_MS: z.coerce.number().default(5000),
   LEAD_STATE_TTL_SECONDS: z.coerce.number().default(60 * 60 * 24 * 7),
 
+  // Orçamento diário de tokens LLM por tenant (0 = sem limite).
+  LLM_DAILY_TOKENS_PER_TENANT: z.coerce.number().default(1_500_000),
   FOLLOWUP_1_MS: z.coerce.number().default(40 * 60 * 1000), // 40min — lead respira antes do primeiro toque
   FOLLOWUP_2_MS: z.coerce.number().default(24 * 60 * 60 * 1000),
   FOLLOWUP_CLOSE_MS: z.coerce.number().default(24 * 60 * 60 * 1000),

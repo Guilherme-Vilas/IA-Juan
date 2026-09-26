@@ -1,3 +1,5 @@
+import { redirect } from "next/navigation";
+import { getSession } from "@/lib/session";
 import { Header } from "@/components/layout/header";
 import { tenantsApi } from "@/lib/api";
 import { TenantsHub } from "./_components/tenants-hub";
@@ -16,6 +18,11 @@ type TenantSummary = {
 };
 
 export default async function TenantsPage() {
+  // Defesa server-side: página de plataforma é só de superadmin (o menu já
+  // esconde, mas URL digitada na mão não pode abrir).
+  const session = await getSession();
+  if (!session?.is_superadmin) redirect("/leads");
+
   let tenants: TenantSummary[] = [];
   let error: string | null = null;
   try {

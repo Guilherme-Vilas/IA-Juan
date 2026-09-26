@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { usePolling } from "@/lib/use-polling";
 import { Modal } from "@/components/ui/modal";
 import { Button } from "@/components/ui/button";
 import { WifiOff, QrCode, RefreshCw, CheckCircle2 } from "lucide-react";
@@ -30,9 +31,8 @@ export function WhatsappAlert({ tenantSlug }: { tenantSlug: string }) {
   // desconectado → checa mais rápido pra sumir logo após reconectar
   useEffect(() => {
     check();
-    const id = setInterval(check, disconnected ? 10_000 : 30_000);
-    return () => clearInterval(id);
-  }, [check, disconnected]);
+  }, [check]);
+  usePolling(check, disconnected ? 10_000 : 30_000);
 
   if (!disconnected) return null;
 

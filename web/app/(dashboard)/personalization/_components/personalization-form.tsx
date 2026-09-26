@@ -46,6 +46,10 @@ export function PersonalizationForm({
   const [err, setErr] = useState<string | null>(error);
 
   const save = async () => {
+    // O prompt é o cérebro do agente: mudança ruim degrada TODAS as conversas.
+    if (!confirm("Salvar as alterações no comportamento da IA?\n\nElas passam a valer pras próximas conversas em até 5 minutos. Dica: teste com um lead seu antes de considerar concluído.")) {
+      return;
+    }
     setBusy(true);
     setErr(null);
     setSaved(false);

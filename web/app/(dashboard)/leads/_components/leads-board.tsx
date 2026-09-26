@@ -6,7 +6,9 @@ import { LeadCard } from "./lead-card";
 import { LeadDrawer } from "./lead-drawer";
 import { StageEditor } from "./stage-editor";
 import { Button } from "@/components/ui/button";
-import { Settings2, Hand, Trophy, XCircle } from "lucide-react";
+import { Search, Settings2, Hand, Trophy, XCircle } from "lucide-react";
+import { toastError, toastSuccess } from "@/lib/toast";
+import { usePolling } from "@/lib/use-polling";
 
 // Lead aparece no board se: aberto, agendado, em atendimento humano, ou com
 // desfecho (Ganho/Perdido fica visivel na coluna terminal). Leads "mortos" sem
@@ -36,8 +38,10 @@ export function LeadsBoard({
   members,
   distribution,
   fieldDefs,
+  initialOpenWaId,
 }: {
   initial: Lead[];
+  initialOpenWaId?: string | null;
   initialStages: PipelineStage[];
   members: TenantMember[];
   distribution: "manual" | "round_robin";
@@ -54,9 +58,20 @@ export function LeadsBoard({
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ mode }),
-    }).catch(() => setDist(distribution));
+    })
+      .then((r) => {
+        if (!r.ok) throw new Error();
+      })
+      .catch(() => {
+        setDist(distribution);
+        toastError("Não consegui salvar a distribuição — tente de novo.");
+      });
   }
-  const [selected, setSelected] = useState<string | null>(null);
+  const [selected, setSelected] = useState<string | null>(initialOpenWaId ?? null);
+  // filtros do board
+  const [query, setQuery] = useState("");
+  const [assigneeFilter, setAssigneeFilter] = useState<string>("");
+  const [scoreFilter, setScoreFilter] = useState<string>("");
   const [editing, setEditing] = useState(false);
   const [dragOver, setDragOver] = useState<number | null>(null);
   const [lostPrompt, setLostPrompt] = useState<{ waId: string; stageId: number } | null>(null);
@@ -71,13 +86,21 @@ export function LeadsBoard({
     }
   }
 
-  useEffect(() => {
-    const id = setInterval(refresh, 5000);
-    return () => clearInterval(id);
-  }, []);
+  usePolling(refresh, 5000);
 
   const firstStageId = stages[0]?.id ?? null;
-  const visible = leads.filter(onBoard);
+  const q = query.trim().toLowerCase();
+  const qDigits = q.replace(/\D/g, "");
+  const visible = leads.filter(onBoard).filter((l) => {
+    if (q) {
+      const nome = (l.nome ?? (l.slots as { nome?: string })?.nome ?? "").toLowerCase();
+      const phoneMatch = qDigits.length >= 4 && l.wa_id.includes(qDigits);
+      if (!nome.includes(q) && !phoneMatch) return false;
+    }
+    if (assigneeFilter && String(l.assigned_user_id ?? "") !== assigneeFilter) return false;
+    if (scoreFilter && l.score_label !== scoreFilter) return false;
+    return true;
+  });
   const stageOf = (l: Lead) => l.pipeline_stage_id ?? firstStageId;
 
   function performMove(waId: string, stageId: number, reason?: string) {
@@ -109,8 +132,12 @@ export function LeadsBoard({
     })
       .then((r) => {
         if (!r.ok) throw new Error("move failed");
+        if (outcome === "won") toastSuccess("Negócio marcado como ganho 🎉");
       })
-      .catch(() => refresh());
+      .catch(() => {
+        toastError("Não consegui mover o lead — a coluna voltou ao estado real.");
+        refresh();
+      });
   }
 
   function handleDrop(stageId: number, e: React.DragEvent) {
@@ -131,10 +158,47 @@ export function LeadsBoard({
 
   return (
     <div className="flex h-full flex-col">
-      <div className="glass flex items-center justify-between border-b border-line/70 px-4 py-2">
-        <span className="text-xs text-ink-muted">
-          {visible.length} no funil · arraste pra mover · a IA move sozinha conforme qualifica
-        </span>
+      <div className="glass flex flex-wrap items-center justify-between gap-2 border-b border-line/70 px-4 py-2">
+        <div className="flex flex-wrap items-center gap-2">
+          <label className="relative">
+            <Search size={13} className="pointer-events-none absolute left-2 top-1/2 -translate-y-1/2 text-ink-faint" />
+            <input
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="Buscar nome ou telefone…"
+              aria-label="Buscar lead por nome ou telefone"
+              className="h-7 w-48 rounded-md border border-line bg-canvas-deep pl-7 pr-2 text-xs text-ink placeholder:text-ink-faint focus:border-line-strong focus:outline-none"
+            />
+          </label>
+          {members.length > 1 && (
+            <select
+              value={assigneeFilter}
+              onChange={(e) => setAssigneeFilter(e.target.value)}
+              aria-label="Filtrar por responsável"
+              className="h-7 rounded-md border border-line bg-canvas-deep px-2 text-xs text-ink focus:border-line-strong focus:outline-none"
+            >
+              <option value="">Todos os responsáveis</option>
+              {members.map((m) => (
+                <option key={m.user_id} value={String(m.user_id)}>
+                  {m.name || m.email}
+                </option>
+              ))}
+            </select>
+          )}
+          <select
+            value={scoreFilter}
+            onChange={(e) => setScoreFilter(e.target.value)}
+            aria-label="Filtrar por temperatura"
+            className="h-7 rounded-md border border-line bg-canvas-deep px-2 text-xs text-ink focus:border-line-strong focus:outline-none"
+          >
+            <option value="">Todas as temperaturas</option>
+            <option value="pronto">Pronto</option>
+            <option value="quente">Quente</option>
+            <option value="morno">Morno</option>
+            <option value="frio">Frio</option>
+          </select>
+          <span className="text-xs text-ink-muted">{visible.length} no funil</span>
+        </div>
         <div className="flex items-center gap-2">
           <label className="flex items-center gap-1.5 text-xs text-ink-muted">
             Distribuição:

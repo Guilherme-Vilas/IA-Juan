@@ -55,6 +55,13 @@ export async function confirmSlot(
   );
   await redis.del(keys.offeredSlots(tenant.slug, lead.wa_id));
   await notifyScheduled(tenant, lead, pick.label, channel);
+  // Automação "reunião agendada" (ex: mandar material de preparação).
+  try {
+    const { fireTrigger } = await import("../core/automations.js");
+    await fireTrigger(tenant.id, "appointment_scheduled", lead.id, {});
+  } catch (err) {
+    logger.warn({ err, leadId: lead.id }, "trigger appointment_scheduled falhou");
+  }
   return pick;
 }
 

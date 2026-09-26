@@ -1,4 +1,4 @@
-import { sendText } from "../core/evolution.js";
+import { notifyLeadOwner } from "../core/notify.js";
 import { updateLead, type LeadRow, type MeetingChannel } from "../core/db.js";
 import { logger } from "../core/logger.js";
 import type { TenantRow } from "../core/tenants.js";
@@ -46,11 +46,9 @@ export async function executeHandoff(tenant: TenantRow, lead: LeadRow, motivo: s
     `Lead: ${lead.nome ?? "(sem nome)"} — wa.me/${lead.wa_id}\n` +
     `Motivo: ${motivo}\n\n` +
     formatSlots(lead.slots);
-  try {
-    await sendText(tenant, tenant.owner_whatsapp_e164, text);
-  } catch (err) {
-    logger.error({ err, tenant: tenant.slug }, "executeHandoff failed");
-  }
+  await notifyLeadOwner(tenant, lead.id, text).catch((err) =>
+    logger.error({ err, tenant: tenant.slug }, "executeHandoff failed"),
+  );
 }
 
 export async function pauseAi(tenant: TenantRow, waId: string) {
@@ -72,9 +70,7 @@ export async function notifyScheduled(
     `Quando: ${whenLabel}\n` +
     `Canal: ${channelLabel}\n\n` +
     formatSlots(lead.slots);
-  try {
-    await sendText(tenant, tenant.owner_whatsapp_e164, text);
-  } catch (err) {
-    logger.error({ err, tenant: tenant.slug }, "notifyScheduled failed");
-  }
+  await notifyLeadOwner(tenant, lead.id, text).catch((err) =>
+    logger.error({ err, tenant: tenant.slug }, "notifyScheduled failed"),
+  );
 }

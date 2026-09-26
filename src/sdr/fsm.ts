@@ -26,6 +26,7 @@ import { consumeCampaignReply, getLeadReplyClass, resolveReplyClass } from "../p
 import { OPTOUT_CONFIRMATION } from "../prospect/suppression.js";
 import type { ReplyClass } from "../prospect/classify.js";
 import { config } from "../config.js";
+import { isLlmBudgetExceeded, shouldNotifyBudgetExceeded } from "../core/llm-budget.js";
 import { logger } from "../core/logger.js";
 import { executeHandoff, pauseAi } from "./handoff.js";
 import { confirmSlot, fetchAndCacheSlots, formatOffer, getOfferedSlots } from "./scheduler.js";
@@ -434,6 +435,23 @@ export async function runTurn(
     }
   }
 
+  // Orçamento diário de LLM estourado: IA silencia até virar o dia (proteção
+  // de custo). Dono é avisado uma única vez por dia.
+  if (await isLlmBudgetExceeded(tenant.slug)) {
+    if (await shouldNotifyBudgetExceeded(tenant.slug)) {
+      if (tenant.owner_whatsapp_e164) {
+        const { sendText } = await import("../core/evolution.js");
+        await sendText(
+          tenant,
+          tenant.owner_whatsapp_e164,
+          "⚠️ A IA atingiu o limite diário de uso e vai pausar as respostas até amanhã. Os leads seguem registrados no painel. Se precisar aumentar o limite, fale com o suporte.",
+        ).catch(() => undefined);
+      }
+    }
+    logger.warn({ tenant: tenant.slug, waId }, "turno abortado: orçamento LLM do dia estourado");
+    return { replyText: null, newState: lead.state, closedReason: null };
+  }
+
   // ÚNICA condição que silencia a IA: pause manual do owner.
   if (lead.paused) {
     logger.info({ tenant: tenant.slug, waId, state: lead.state }, "skip: lead paused by owner");
@@ -790,6 +808,14 @@ export async function runTurn(
     await syncLeadStage(tenant.id, lead.id, boardPhase, { actor: "ai", reason: "avanço automático" });
   } catch (err) {
     logger.warn({ err, tenant: tenant.slug, waId }, "pipeline: sync falhou (seguindo)");
+  }
+
+  // Webhook de saída: reunião marcada (integrações externas do tenant).
+  if (closedReason === "scheduled" || (workingState === "S5_CONFIRMADO" && lead.state !== "S5_CONFIRMADO")) {
+    const { emitEvent } = await import("../core/outbound-webhooks.js");
+    await emitEvent(tenant.id, "lead.scheduled", {
+      lead_id: lead.id, wa_id: waId, name: workingSlots.nome ?? lead.nome,
+    }).catch(() => undefined);
   }
 
   return { replyText, newState: workingState, closedReason, closedByHandoff };

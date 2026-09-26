@@ -1,5 +1,6 @@
 import axios, { AxiosInstance } from "axios";
 import { config } from "../config.js";
+import { markEchoSent } from "./echo.js";
 import { logger } from "./logger.js";
 import type { TenantRow } from "./tenants.js";
 
@@ -99,6 +100,9 @@ export async function sendText(tenant: TenantRow, waId: string, text: string): P
       text,
       options: { delay: 800, presence: "composing" },
     });
+    // Registra o eco: o webhook vai receber essa mensagem como fromMe e precisa
+    // saber que foi o sistema (e não o dono digitando no celular).
+    await markEchoSent(tenant.slug, waId, text);
   } catch (err) {
     logger.error({ err, tenant: tenant.slug, waId }, "evolution.sendText failed");
     throw err;
@@ -245,6 +249,27 @@ export type EvolutionInboundMessage = {
   audioMessageId?: string;
   timestamp: number;
 };
+
+// CONNECTION_UPDATE: estado da instância (open/connecting/close). A Evolution
+// manda como event "connection.update" (ou CONNECTION_UPDATE) com data.state.
+export function parseConnectionUpdate(payload: unknown): { instance: string; state: string } | null {
+  try {
+    const p = payload as Record<string, unknown>;
+    const event = String(p.event ?? "").toLowerCase().replace(/_/g, ".");
+    if (event !== "connection.update") return null;
+    const data = (p.data ?? p) as Record<string, unknown>;
+    const instance =
+      (typeof p.instance === "string" ? p.instance : null) ??
+      (typeof data.instance === "string" ? (data.instance as string) : null);
+    const state =
+      (typeof data.state === "string" ? (data.state as string) : null) ??
+      (typeof data.status === "string" ? (data.status as string) : null);
+    if (!instance || !state) return null;
+    return { instance, state };
+  } catch {
+    return null;
+  }
+}
 
 export function parseWebhook(payload: unknown): EvolutionInboundMessage | null {
   try {

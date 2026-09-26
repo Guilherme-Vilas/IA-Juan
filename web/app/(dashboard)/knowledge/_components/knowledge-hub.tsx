@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { usePolling } from "@/lib/use-polling";
 import { useRouter } from "next/navigation";
 import { Plus, FileText, Table, Trash2, RefreshCw, BookOpen } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -37,6 +38,10 @@ export function KnowledgeHub({
 }) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
+
+  // "Indexando…" atualiza sozinho — antes o usuário tinha que recarregar a mão.
+  const hasBusyDoc = initial.some((d) => d.status === "pending" || d.status === "indexing");
+  usePolling(() => router.refresh(), 4000, hasBusyDoc);
 
   const call = async (path: string, init?: RequestInit) => {
     const res = await fetch(`/api/admin-proxy/${path}`, {

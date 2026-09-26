@@ -1,3 +1,9 @@
+import {
+  getFollowupConfig,
+  saveFollowupConfig,
+  validateFollowupConfig,
+  type FollowupConfig,
+} from "../core/followups.js";
 import type { FastifyInstance } from "fastify";
 import { getAgentSettings, upsertAgentSettings } from "../core/agent-settings.js";
 import {
@@ -34,6 +40,18 @@ export async function registerSaasRoutes(app: FastifyInstance) {
       await setTenantPlaybook(req.tenantId!, playbookSlug);
       await invalidateTenantsCache();
       return { ok: true, playbook_slug: playbookSlug };
+    });
+
+    // Follow-up de conversa configurável (toques, textos, tempos, janela).
+    scope.get("/admin/tenants/:slug/followups", async (req) => {
+      return { config: await getFollowupConfig(req.tenantId!) };
+    });
+    scope.put("/admin/tenants/:slug/followups", async (req, reply) => {
+      const body = req.body as Partial<FollowupConfig>;
+      const err = validateFollowupConfig(body ?? {});
+      if (err) return reply.code(400).send({ error: err });
+      await saveFollowupConfig(req.tenantId!, body ?? {});
+      return { ok: true, config: await getFollowupConfig(req.tenantId!) };
     });
 
     scope.get("/admin/tenants/:slug/agent-settings", async (req) => {

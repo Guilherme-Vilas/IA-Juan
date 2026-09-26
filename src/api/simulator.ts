@@ -32,6 +32,14 @@ async function resolveTenant(slug?: string) {
 }
 
 export async function registerSimulatorRoutes(app: FastifyInstance) {
+  // SEGURANÇA: o simulador expõe leads (nome/telefone/slots), conversas inteiras
+  // e dispara WhatsApp real SEM auth. Só existe com SIMULATOR_MODE=true (dev).
+  // Em produção nada é registrado — as rotas nem existem.
+  if (!config.SIMULATOR_MODE) {
+    logger.info("simulator: SIMULATOR_MODE=false — rotas /sim/* não registradas");
+    return;
+  }
+
   app.get("/", async (_req, reply) => {
     const file = path.join(publicDir, "simulator.html");
     const html = fs.readFileSync(file, "utf8");

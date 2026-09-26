@@ -19,6 +19,7 @@ export function CreateUserForm({ tenants }: { tenants: Array<{ slug: string; nam
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [whatsapp, setWhatsapp] = useState("");
   const [isSuperadmin, setIsSuperadmin] = useState(false);
   const [tenantSlug, setTenantSlug] = useState(tenants[0]?.slug ?? "");
   const [role, setRole] = useState("owner");
@@ -36,6 +37,7 @@ export function CreateUserForm({ tenants }: { tenants: Array<{ slug: string; nam
         body: JSON.stringify({
           name,
           email,
+          whatsapp_e164: whatsapp,
           password,
           is_superadmin: isSuperadmin,
           tenant_slug: isSuperadmin ? undefined : tenantSlug || undefined,
@@ -68,6 +70,16 @@ export function CreateUserForm({ tenants }: { tenants: Array<{ slug: string; nam
         <label className="block">
           <span className="mb-1.5 block text-xs font-medium text-ink-soft">Nome</span>
           <input value={name} onChange={(e) => setName(e.target.value)} className={inputCls} placeholder="Nome completo" />
+        </label>
+        <label className="block">
+          <span className="mb-1 block text-[11px] font-medium text-ink-soft">WhatsApp (alertas de leads dele)</span>
+          <input
+            value={whatsapp}
+            onChange={(e) => setWhatsapp(e.target.value)}
+            className={inputCls}
+            placeholder="5511999999999"
+            inputMode="tel"
+          />
         </label>
         <label className="block">
           <span className="mb-1.5 block text-xs font-medium text-ink-soft">E-mail</span>

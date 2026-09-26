@@ -11,6 +11,14 @@ import { listFieldDefs, replaceFieldDefs, setLeadCustomFields, type FieldDefInpu
 import { createTask, listTasks, setTaskDone, deleteTask } from "../core/tasks.js";
 import { ensureIngestToken, rotateIngestToken } from "../core/ingest.js";
 import { pool } from "../core/db.js";
+import { setAppointmentStatus, type AppointmentStatus } from "../core/appointments.js";
+import {
+  OUTBOUND_EVENTS,
+  createWebhook,
+  deleteWebhook,
+  listWebhooks,
+  setWebhookEnabled,
+} from "../core/outbound-webhooks.js";
 import { config } from "../config.js";
 
 export async function registerCrmRoutes(app: FastifyInstance) {
@@ -22,6 +30,85 @@ export async function registerCrmRoutes(app: FastifyInstance) {
       req.auth?.kind === "user" ? req.auth.userId ?? null : null;
 
     // Vendedores do tenant (pra seletor de responsavel).
+    // ===== Webhooks de saída (integrações do tenant) =====
+    scope.get("/admin/tenants/:slug/webhooks", async (req) => {
+      const hooks = await listWebhooks(req.tenantId!);
+      // secret só aparece na criação — aqui vai mascarado
+      return {
+        webhooks: hooks.map((h) => ({ ...h, secret: `${h.secret.slice(0, 6)}…` })),
+        events: OUTBOUND_EVENTS,
+      };
+    });
+    scope.post("/admin/tenants/:slug/webhooks", async (req, reply) => {
+      const body = req.body as { url?: string; events?: string[] };
+      if (!body?.url) return reply.code(400).send({ error: "url obrigatória" });
+      const res = await createWebhook(req.tenantId!, body.url.trim(), body.events ?? []);
+      if (!res.ok) return reply.code(400).send({ error: res.error });
+      // devolve o secret COMPLETO uma única vez, pra pessoa guardar
+      return { ok: true, webhook: res.webhook };
+    });
+    scope.delete("/admin/tenants/:slug/webhooks/:id", async (req, reply) => {
+      const ok = await deleteWebhook(req.tenantId!, Number((req.params as { id: string }).id));
+      if (!ok) return reply.code(404).send({ error: "not found" });
+      return { ok: true };
+    });
+    scope.post("/admin/tenants/:slug/webhooks/:id/toggle", async (req, reply) => {
+      const body = req.body as { enabled?: boolean };
+      const ok = await setWebhookEnabled(
+        req.tenantId!,
+        Number((req.params as { id: string }).id),
+        body?.enabled !== false,
+      );
+      if (!ok) return reply.code(404).send({ error: "not found" });
+      return { ok: true };
+    });
+
+    // ===== Exportação CSV de leads =====
+    scope.get("/admin/tenants/:slug/export/leads.csv", async (req, reply) => {
+      const { rows } = await pool.query<Record<string, unknown>>(
+        `SELECT l.wa_id, l.nome, l.source, l.state, l.status, l.closed_reason,
+                l.outcome, l.outcome_reason, l.value_cents, l.score, l.score_label,
+                ps.name AS etapa, u.name AS responsavel,
+                l.slots, l.created_at, l.updated_at
+           FROM leads l
+           LEFT JOIN pipeline_stages ps ON ps.id = l.pipeline_stage_id
+           LEFT JOIN users u ON u.id = l.assigned_user_id
+          WHERE l.tenant_id = $1
+          ORDER BY l.updated_at DESC
+          LIMIT 10000`,
+        [req.tenantId!],
+      );
+      const cols = [
+        "wa_id","nome","source","state","status","closed_reason","outcome","outcome_reason",
+        "value_cents","score","score_label","etapa","responsavel","slots","created_at","updated_at",
+      ];
+      const esc = (v: unknown): string => {
+        if (v == null) return "";
+        const str = typeof v === "object" ? JSON.stringify(v) : v instanceof Date ? v.toISOString() : String(v);
+        return /[",\n;]/.test(str) ? `"${str.replace(/"/g, '""')}"` : str;
+      };
+      const csv = "\uFEFF" + [cols.join(";"), ...rows.map((r) => cols.map((c) => esc(r[c])).join(";"))].join("\n");
+      return reply
+        .type("text/csv; charset=utf-8")
+        .header("content-disposition", `attachment; filename="leads-${req.tenantSlug}.csv"`)
+        .send(csv);
+    });
+
+    // Desfecho da reunião (Agenda): confirmed | completed | no_show | cancelled.
+    scope.patch("/admin/tenants/:slug/appointments/:id", async (req, reply) => {
+      const id = Number((req.params as { id: string }).id);
+      const body = req.body as { status?: string; note?: string };
+      if (!id || !body?.status) return reply.code(400).send({ error: "status obrigatório" });
+      const res = await setAppointmentStatus(
+        req.tenantId!,
+        id,
+        body.status as AppointmentStatus,
+        typeof body.note === "string" ? body.note.slice(0, 500) : undefined,
+      );
+      if (!res.ok) return reply.code(res.error === "appointment not found" ? 404 : 400).send({ error: res.error });
+      return { ok: true };
+    });
+
     scope.get("/admin/tenants/:slug/members", async (req) => {
       return { members: await listTenantMembers(req.tenantId!) };
     });

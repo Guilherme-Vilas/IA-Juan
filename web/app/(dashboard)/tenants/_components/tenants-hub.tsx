@@ -54,7 +54,7 @@ export function TenantsHub({ initial, error }: { initial: TenantSummary[]; error
       )}
 
       {/* Tabela densa (estilo Linear/Vercel) */}
-      <div className="overflow-hidden rounded-xl border border-line bg-canvas-surface">
+      <div className="overflow-x-auto rounded-xl border border-line bg-canvas-surface">
         <table className="w-full text-[13px]">
           <thead>
             <tr className="border-b border-line text-left text-[11px] uppercase tracking-wider text-ink-faint">

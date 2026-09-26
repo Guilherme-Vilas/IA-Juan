@@ -1,5 +1,5 @@
 import { Worker } from "bullmq";
-import { bullConnection } from "../core/redis.js";
+import { bullConnection, redis } from "../core/redis.js";
 import { runTurn } from "../sdr/fsm.js";
 import { sendText, sendPresence } from "../core/evolution.js";
 import { logger } from "../core/logger.js";
@@ -10,6 +10,7 @@ import {
   retryTurnQueue,
   retryTurnJobId,
   scheduleFollowup,
+  scheduleFirstFollowup,
   type RetryTurnJob,
 } from "./queues.js";
 import { requireTenantById, type TenantRow } from "../core/tenants.js";
@@ -49,6 +50,19 @@ const worker = new Worker<RetryTurnJob>(
     logger.info({ tenant: tenant.slug, waId, attempt }, "retry-turn: starting");
 
     await sendPresence(tenant, waId, "composing").catch(() => undefined);
+
+    // Trava por lead compartilhada com o inbound: se um turno normal está
+    // rodando (lead voltou a falar), o retry espera 5s e tenta de novo.
+    const lockKey = `lock:turn:${tenantId}:${waId}`;
+    const locked = await redis.set(lockKey, "1", "EX", 120, "NX").catch(() => "OK" as const);
+    if (locked !== "OK") {
+      await retryTurnQueue.add(
+        "retry",
+        job.data,
+        { jobId: `${job.id}:wait:${Date.now()}`, delay: 5000, removeOnComplete: true, removeOnFail: 20 },
+      );
+      return;
+    }
 
     try {
       // userText vazio — runTurn em modo retry usa o histórico
@@ -90,11 +104,12 @@ const worker = new Worker<RetryTurnJob>(
       // (mesma regra do inbound: nada de follow-up em estado terminal).
       const TERMINAL_STATES = ["S5_CONFIRMADO", "HANDOFF"];
       if (result.replyText && !result.closedReason && !TERMINAL_STATES.includes(result.newState)) {
-        await scheduleFollowup(tenantId, waId, 1, config.FOLLOWUP_1_MS);
+        await scheduleFirstFollowup(tenantId, waId);
       }
     } catch (err) {
       logger.error({ err, tenant: tenant.slug, waId, attempt }, "retry-turn worker fatal");
     } finally {
+      await redis.del(lockKey).catch(() => undefined);
       await sendPresence(tenant, waId, "paused").catch(() => undefined);
     }
   },

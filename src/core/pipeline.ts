@@ -295,7 +295,17 @@ export async function moveLeadManual(
     reason: opts.reason ?? "movido manualmente",
   });
   await fireStageTrigger(tenantId, lead.id, stage.id);
-  if (outcome) await fireOutcomeTrigger(tenantId, lead.id, outcome);
+  if (outcome) {
+    await fireOutcomeTrigger(tenantId, lead.id, outcome);
+    try {
+      const { emitEvent } = await import("./outbound-webhooks.js");
+      await emitEvent(tenantId, outcome === "won" ? "lead.won" : "lead.lost", {
+        lead_id: lead.id, wa_id: waId, reason: opts.reason ?? "",
+      });
+    } catch {
+      /* best-effort */
+    }
+  }
   return { ok: true };
 }
 

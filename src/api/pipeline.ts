@@ -1,3 +1,4 @@
+import { getFunnelReport } from "../core/reports.js";
 import type { FastifyInstance } from "fastify";
 import { logger } from "../core/logger.js";
 import {
@@ -17,6 +18,13 @@ export async function registerPipelineRoutes(app: FastifyInstance) {
 
     const userId = (req: { auth?: { kind: string; userId?: number } }): number | null =>
       req.auth?.kind === "user" ? req.auth.userId ?? null : null;
+
+    // Relatório do funil com período (7/30/90 dias).
+    scope.get("/admin/tenants/:slug/reports/funnel", async (req) => {
+      const raw = Number((req.query as { days?: string }).days);
+      const days = [7, 30, 90, 365].includes(raw) ? raw : 30;
+      return await getFunnelReport(req.tenantId!, days);
+    });
 
     // Pipeline atual (etapas) + fases canonicas disponiveis pro mapeamento.
     scope.get("/admin/tenants/:slug/pipeline", async (req) => {

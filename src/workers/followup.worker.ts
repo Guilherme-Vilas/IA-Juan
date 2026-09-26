@@ -12,13 +12,12 @@ import {
 import { redis, keys } from "../core/redis.js";
 import { followupQueue, scheduleFollowup, type FollowupJob } from "./queues.js";
 import { requireTenantById } from "../core/tenants.js";
+import { getFollowupConfig, msUntilWorkWindow, renderFollowupText } from "../core/followups.js";
+import { isWhatsappConnected } from "../core/connection-monitor.js";
 
-// Follow-up stage 1: tom mais profissional, sem "opa". Convite curto e direto.
-const MSG_STAGE_1 = "Oi! Conseguiu ver a mensagem? Fico no aguardo do seu retorno 🙌";
-// Follow-up stage 2: convidar a retomar AGORA, sem oferecer "procurar depois"
-// (evita dar pretexto pra postergar — fica sempre como "aberto no aguardo").
-const MSG_STAGE_2 =
-  "Oi! Tudo bem? Aproveitando que estou online, conseguimos seguir agora pra eu te apresentar as opções?";
+// Follow-up de conversa (lead sumiu depois da IA falar). Os toques, textos e
+// tempos vêm da configuração do TENANT (tenant_followups) — ver core/followups.ts.
+// stage N = índice do toque (1-based); stage steps.length+1 = fechamento.
 
 async function pushHistoryAssistant(tenantSlug: string, waId: string, content: string) {
   const k = keys.leadHistory(tenantSlug, waId);
@@ -59,30 +58,48 @@ const worker = new Worker<FollowupJob>(
       return;
     }
 
-    if (stage === 1) {
-      await sendText(tenant, waId, MSG_STAGE_1);
-      await logMessage(lead.id, "out", "assistant", MSG_STAGE_1);
-      await pushHistoryAssistant(tenant.slug, waId, MSG_STAGE_1);
-      await markLastActivity(tenantId, waId, "assistant");
-      await scheduleFollowup(tenantId, waId, 2, config.FOLLOWUP_2_MS);
-      logger.info({ tenant: tenant.slug, waId }, "followup 1 sent; stage 2 scheduled");
+    const cfg = await getFollowupConfig(tenantId);
+    if (!cfg.enabled) {
+      logger.debug({ tenant: tenant.slug, waId }, "followup: desabilitado pro tenant; skip");
       return;
     }
 
-    if (stage === 2) {
-      await sendText(tenant, waId, MSG_STAGE_2);
-      await logMessage(lead.id, "out", "assistant", MSG_STAGE_2);
-      await pushHistoryAssistant(tenant.slug, waId, MSG_STAGE_2);
-      await markLastActivity(tenantId, waId, "assistant");
-      await scheduleFollowup(tenantId, waId, 3, config.FOLLOWUP_CLOSE_MS);
-      logger.info({ tenant: tenant.slug, waId }, "followup 2 sent; stage 3 (auto-close) scheduled");
-      return;
-    }
-
-    if (stage === 3) {
+    // Depois do último toque, só resta o fechamento automático.
+    if (stage > cfg.steps.length) {
       await closeConversation(tenantId, waId, "no_response");
       logger.info({ tenant: tenant.slug, waId }, "conversation auto-closed: no_response");
+      return;
     }
+
+    // Fora do horário comercial do tenant: reagenda pro início da janela —
+    // follow-up de madrugada queima a marca (e o chip).
+    if (cfg.work_hours_only) {
+      const wait = msUntilWorkWindow(tenant);
+      if (wait > 0) {
+        await scheduleFollowup(tenantId, waId, stage, wait);
+        logger.debug({ tenant: tenant.slug, waId, stage, waitMin: Math.round(wait / 60000) }, "followup: fora da janela — reagendado");
+        return;
+      }
+    }
+
+    // Chip caído: reagenda sem consumir o toque.
+    if (!(await isWhatsappConnected(tenant))) {
+      await scheduleFollowup(tenantId, waId, stage, 30 * 60_000);
+      logger.warn({ tenant: tenant.slug, waId, stage }, "followup: WhatsApp desconectado — reagendado +30min");
+      return;
+    }
+
+    const text = renderFollowupText(cfg.steps[stage - 1]!.text, lead);
+    await sendText(tenant, waId, text);
+    await logMessage(lead.id, "out", "assistant", text);
+    await pushHistoryAssistant(tenant.slug, waId, text);
+    await markLastActivity(tenantId, waId, "assistant");
+
+    const next = stage + 1;
+    const delayMs =
+      next <= cfg.steps.length ? cfg.steps[next - 1]!.delay_minutes * 60_000 : cfg.close_after_minutes * 60_000;
+    await scheduleFollowup(tenantId, waId, next, delayMs);
+    logger.info({ tenant: tenant.slug, waId, stage, next }, "followup enviado; próximo agendado");
   },
   { ...bullConnection, concurrency: 8 },
 );

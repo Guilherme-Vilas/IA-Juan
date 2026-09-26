@@ -125,7 +125,10 @@ export type AutomationTrigger =
   | "lead_won"
   | "lead_lost"
   | "no_reply"
-  | "campaign_replied";
+  | "campaign_replied"
+  | "appointment_scheduled"
+  | "appointment_no_show"
+  | "lead_dormant";
 export type AutomationActionType =
   | "send_message"
   | "create_task"

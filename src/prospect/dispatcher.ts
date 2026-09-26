@@ -1,3 +1,4 @@
+import { isWhatsappConnected } from "../core/connection-monitor.js";
 import { DateTime } from "luxon";
 import { config } from "../config.js";
 import { logger } from "../core/logger.js";
@@ -84,6 +85,12 @@ export async function tickAllCampaigns(): Promise<void> {
   for (const [tenantId, tenantCampaigns] of byTenant) {
     try {
       const tenant = await requireTenantById(tenantId);
+      // Chip caído = nada de disparo. Enviar com a instância desconectada só
+      // acumula falha e queima a lista; o monitor já alertou o dono por e-mail.
+      if (!(await isWhatsappConnected(tenant))) {
+        logger.warn({ tenant: tenant.slug }, "prospect dispatcher: WhatsApp desconectado — campanhas em espera");
+        continue;
+      }
       let remaining = await tenantRemainingBudget(tenant);
       if (remaining <= 0) {
         logger.debug({ tenant: tenant.slug }, "orçamento diário da instância esgotado");

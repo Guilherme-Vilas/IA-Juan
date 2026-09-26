@@ -16,6 +16,8 @@ async function main() {
   await import("./workers/retry.worker.js");
   await import("./workers/discovery.worker.js");
   await import("./workers/marketing.worker.js");
+  const { startWebhookWorker } = await import("./core/outbound-webhooks.js");
+  startWebhookWorker();
 
   // Agenda o tick de prospeccao como repeatable job (idempotente entre replicas).
   await ensureProspectTickScheduled(config.PROSPECT_TICK_MS);

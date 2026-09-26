@@ -42,7 +42,8 @@ async function getInboxLeads(tenantId: number): Promise<InboxLead[]> {
 }
 
 function reason(lead: InboxLead) {
-  if (lead.state === "HANDOFF") return { icon: UserRoundCheck, label: "handoff", cls: "bg-orange-100 text-orange-700" };
+  if (lead.state === "HANDOFF")
+    return { icon: UserRoundCheck, label: "atendimento humano", cls: "bg-accent-bronze/15 text-accent-bronze-soft" };
   if (lead.paused) return { icon: Pause, label: "IA pausada", cls: "bg-warning/15 text-warning" };
   if (lead.score >= 70) return { icon: Flame, label: "lead quente", cls: "bg-success/15 text-success" };
   return { icon: AlertCircle, label: "aguardando resposta", cls: "bg-info/15 text-info" };
@@ -55,7 +56,7 @@ export default async function InboxPage() {
   return (
     <>
       <Header title="Inbox" subtitle={`${tenant.name} · ${leads.length} ações humanas`} />
-      <div className="flex-1 overflow-y-auto px-6 py-4">
+      <div className="flex-1 overflow-y-auto px-4 py-4 md:px-6">
         <Card>
           <CardHeader>
             <h2 className="text-sm font-semibold">Prioridades</h2>
@@ -65,7 +66,11 @@ export default async function InboxPage() {
               const r = reason(lead);
               const Icon = r.icon;
               return (
-                <Link key={lead.id} href="/leads" className="flex items-center gap-3 py-3 text-sm hover:bg-canvas-surface">
+                <Link
+                  key={lead.id}
+                  href={`/leads?lead=${encodeURIComponent(lead.wa_id)}`}
+                  className="flex items-center gap-3 rounded-md px-1 py-3 text-sm hover:bg-canvas-surface"
+                >
                   <div className="grid h-9 w-9 place-items-center rounded-full bg-canvas-surface-2 font-semibold text-accent-bronze">
                     {(lead.nome ?? lead.slots.nome ?? lead.wa_id).slice(0, 1).toUpperCase()}
                   </div>
@@ -76,10 +81,10 @@ export default async function InboxPage() {
                   <Badge className={r.cls}>
                     <Icon size={11} /> {r.label}
                   </Badge>
-                  <Badge className="bg-canvas-surface-2 text-ink">
+                  <Badge className="hidden bg-canvas-surface-2 text-ink sm:inline-flex">
                     {lead.score_label} · {lead.score}
                   </Badge>
-                  <span className="w-28 text-right text-xs text-ink-muted">
+                  <span className="hidden w-28 text-right text-xs text-ink-muted sm:block">
                     {formatRelative(lead.last_user_at ?? lead.updated_at)}
                   </span>
                 </Link>

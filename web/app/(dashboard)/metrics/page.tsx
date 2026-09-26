@@ -1,207 +1,230 @@
+import Link from "next/link";
 import { Header } from "@/components/layout/header";
 import { Card, CardBody, CardHeader } from "@/components/ui/card";
 import { pool } from "@/lib/db";
-import {
-  FSM_STATES,
-  REASON_LABELS,
-  STATE_COLORS,
-  STATE_LABELS,
-  type LeadState,
-  type ClosedReason,
-} from "@/lib/types";
+import { adminCall } from "@/lib/api";
 import { getCurrentTenant } from "@/lib/tenant";
 import { formatCurrency } from "@/lib/utils";
+import { Download } from "lucide-react";
+import { DailyChart } from "./_components/daily-chart";
 
 export const dynamic = "force-dynamic";
 
-type StageFunnelRow = {
-  id: number;
-  name: string;
-  color: string;
-  is_won: boolean;
-  is_lost: boolean;
-  count: string;
+const PERIODS = [
+  { days: 7, label: "7 dias" },
+  { days: 30, label: "30 dias" },
+  { days: 90, label: "90 dias" },
+] as const;
+
+type FunnelReport = {
+  days: number;
+  totals: {
+    novos: number;
+    engajaram: number;
+    qualificados: number;
+    agendados: number;
+    realizadas: number;
+    no_show: number;
+    ganhos: number;
+    perdidos: number;
+    valor_ganho_cents: number;
+  };
+  por_origem: Array<{ source: string; novos: number; agendados: number; ganhos: number }>;
+  por_vendedor: Array<{ user_id: number | null; name: string; leads: number; agendados: number; ganhos: number }>;
+  por_dia: Array<{ day: string; novos: number; agendados: number }>;
 };
 
-async function getData(tenantId: number) {
-  // Funil pela PIPELINE configurada (etapas do tenant), na ordem das colunas.
-  const pipelineFunnel = await pool.query<StageFunnelRow>(
-    `SELECT ps.id, ps.name, ps.color, ps.is_won, ps.is_lost,
-            COUNT(l.id)::text AS count
-       FROM pipeline_stages ps
-       JOIN pipelines p ON p.id = ps.pipeline_id
-       LEFT JOIN leads l ON l.pipeline_stage_id = ps.id
-      WHERE p.tenant_id = $1
-      GROUP BY ps.id
-      ORDER BY ps.position ASC, ps.id ASC`,
-    [tenantId],
-  );
-  const outcomes = await pool.query<{ won: string; lost: string }>(
-    `SELECT COUNT(*) FILTER (WHERE outcome='won')::text AS won,
-            COUNT(*) FILTER (WHERE outcome='lost')::text AS lost
-       FROM leads WHERE tenant_id = $1`,
-    [tenantId],
-  );
-  const values = await pool.query<{ won_value: string; open_value: string }>(
-    `SELECT COALESCE(SUM(value_cents) FILTER (WHERE outcome='won'),0)::text AS won_value,
-            COALESCE(SUM(value_cents) FILTER (WHERE status='open' AND outcome IS NULL),0)::text AS open_value
-       FROM leads WHERE tenant_id = $1`,
-    [tenantId],
-  );
-  const funnel = await pool.query<{ state: LeadState; count: string }>(
-    `SELECT state, COUNT(*)::text AS count FROM leads WHERE tenant_id = $1 GROUP BY state`,
-    [tenantId],
-  );
-  const closed = await pool.query<{ reason: string; count: string }>(
-    `SELECT COALESCE(closed_reason, 'aberto') AS reason, COUNT(*)::text AS count
-       FROM leads
-      WHERE tenant_id = $1 AND status = 'closed'
-      GROUP BY closed_reason`,
-    [tenantId],
-  );
-  const totals = await pool.query<{ total: string; abertos: string; fechados: string }>(
-    `SELECT COUNT(*)::text AS total,
-            COUNT(*) FILTER (WHERE status='open')::text AS abertos,
-            COUNT(*) FILTER (WHERE status='closed')::text AS fechados
-       FROM leads
-      WHERE tenant_id = $1`,
-    [tenantId],
-  );
-  const agendados = await pool.query<{ c: string }>(
-    `SELECT COUNT(*)::text AS c FROM leads WHERE tenant_id = $1 AND state='S5_CONFIRMADO'`,
-    [tenantId],
-  );
-  const won = Number(outcomes.rows[0]?.won ?? 0);
-  const lost = Number(outcomes.rows[0]?.lost ?? 0);
-  return {
-    funnel: Object.fromEntries(funnel.rows.map((r) => [r.state, Number(r.count)])) as Record<
-      LeadState,
-      number
-    >,
-    pipelineFunnel: pipelineFunnel.rows.map((r) => ({
-      id: r.id,
-      name: r.name,
-      color: r.color,
-      is_won: r.is_won,
-      is_lost: r.is_lost,
-      count: Number(r.count),
-    })),
-    won,
-    lost,
-    winRate: won + lost > 0 ? Math.round((won / (won + lost)) * 100) : null,
-    wonValue: Number(values.rows[0]?.won_value ?? 0) / 100,
-    openValue: Number(values.rows[0]?.open_value ?? 0) / 100,
-    closed: closed.rows.map((r) => ({ reason: r.reason, count: Number(r.count) })),
-    totals: totals.rows[0]!,
-    agendados: Number(agendados.rows[0]?.c ?? 0),
-  };
+type StageFunnelRow = { id: number; name: string; color: string; is_won: boolean; is_lost: boolean; count: string };
+
+const SOURCE_LABELS: Record<string, string> = {
+  campaign: "Campanha de prospecção",
+  captura: "Captura (site/formulário)",
+  demo: "Demonstração",
+  orgânico: "Orgânico (chegou no WhatsApp)",
+};
+
+function pct(part: number, whole: number): string {
+  return whole ? `${Math.round((part / whole) * 100)}%` : "—";
 }
 
-export default async function MetricsPage() {
+function Kpi({ label, value, sub }: { label: string; value: string; sub?: string }) {
+  return (
+    <div className="rounded-lg bg-canvas-deep/60 p-3">
+      <div className="text-[10px] uppercase tracking-wide text-ink-muted">{label}</div>
+      <div className="font-serif text-2xl text-ink">{value}</div>
+      {sub && <div className="text-[11px] text-ink-soft">{sub}</div>}
+    </div>
+  );
+}
+
+export default async function MetricsPage({ searchParams }: { searchParams?: { days?: string } }) {
   const tenant = await getCurrentTenant();
-  const d = await getData(tenant.id);
-  const max = Math.max(...Object.values(d.funnel), 1);
-  const pipeMax = Math.max(...d.pipelineFunnel.map((s) => s.count), 1);
+  const days = PERIODS.some((p) => p.days === Number(searchParams?.days)) ? Number(searchParams?.days) : 30;
+
+  const [report, stagesRes] = await Promise.all([
+    adminCall(`/admin/tenants/${tenant.slug}/reports/funnel?days=${days}`, { method: "GET" }) as Promise<FunnelReport>,
+    pool.query<StageFunnelRow>(
+      `SELECT ps.id, ps.name, ps.color, ps.is_won, ps.is_lost, COUNT(l.id)::text AS count
+         FROM pipeline_stages ps
+         JOIN pipelines p ON p.id = ps.pipeline_id
+         LEFT JOIN leads l ON l.pipeline_stage_id = ps.id AND l.status = 'open'
+        WHERE p.tenant_id = $1
+        GROUP BY ps.id ORDER BY ps.position ASC, ps.id ASC`,
+      [tenant.id],
+    ),
+  ]);
+
+  const t = report.totals;
+  const stageRows = stagesRes.rows.map((r) => ({ ...r, count: Number(r.count) }));
+  const maxStage = Math.max(1, ...stageRows.map((r) => r.count));
+
   return (
     <>
-      <Header title="Métricas" subtitle={`${tenant.name} · Funil e fechamentos`} />
-      <div className="flex-1 space-y-4 overflow-y-auto px-6 py-4">
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-5">
-          <Stat label="Total de leads" value={Number(d.totals.total)} />
-          <Stat label="Agendados" value={d.agendados} accent />
-          <Stat label="Ganhos" value={d.won} />
-          <Stat label="Perdidos" value={d.lost} />
-          <Stat label="Conversão" value={d.winRate == null ? "—" : `${d.winRate}%`} accent />
-        </div>
-        <div className="grid grid-cols-2 gap-3">
-          <Stat label="Receita ganha" value={formatCurrency(d.wonValue)} accent />
-          <Stat label="Pipeline aberto" value={formatCurrency(d.openValue)} />
+      <Header
+        title="Métricas"
+        subtitle={`${tenant.name} · últimos ${days} dias`}
+        action={
+          <div className="flex items-center gap-2">
+            <a
+              href="/api/export/leads"
+              className="inline-flex h-8 items-center gap-1.5 rounded-md border border-line px-2.5 text-xs text-ink-soft hover:text-ink"
+            >
+              <Download size={13} /> Exportar CSV
+            </a>
+            <div className="flex rounded-md border border-line p-0.5" role="group" aria-label="Período">
+              {PERIODS.map((p) => (
+                <Link
+                  key={p.days}
+                  href={`/metrics?days=${p.days}`}
+                  aria-current={p.days === days ? "page" : undefined}
+                  className={`rounded px-2.5 py-1 text-xs ${
+                    p.days === days ? "bg-canvas-surface-2 text-ink" : "text-ink-muted hover:text-ink"
+                  }`}
+                >
+                  {p.label}
+                </Link>
+              ))}
+            </div>
+          </div>
+        }
+      />
+      <div className="flex-1 space-y-4 overflow-y-auto px-4 py-4 md:px-6">
+        {/* O funil do período: quanto entrou e quanto virou reunião/venda */}
+        <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 lg:grid-cols-8">
+          <Kpi label="Leads novos" value={String(t.novos)} />
+          <Kpi label="Engajaram" value={String(t.engajaram)} sub={pct(t.engajaram, t.novos)} />
+          <Kpi label="Qualificados" value={String(t.qualificados)} sub={pct(t.qualificados, t.novos)} />
+          <Kpi label="Reuniões" value={String(t.agendados)} sub={pct(t.agendados, t.novos)} />
+          <Kpi label="Realizadas" value={String(t.realizadas)} sub={pct(t.realizadas, t.agendados)} />
+          <Kpi label="Faltas" value={String(t.no_show)} sub={pct(t.no_show, t.agendados)} />
+          <Kpi label="Ganhos" value={String(t.ganhos)} sub={t.perdidos ? `${t.perdidos} perdidos` : undefined} />
+          <Kpi
+            label="Valor ganho"
+            value={t.valor_ganho_cents ? formatCurrency(t.valor_ganho_cents / 100) : "—"}
+          />
         </div>
 
         <Card>
           <CardHeader>
-            <h2 className="text-sm font-semibold">Funil da pipeline</h2>
-            <p className="text-xs text-ink-muted">Distribuição de leads pelas etapas configuradas</p>
+            <h2 className="text-sm font-semibold">Movimento por dia</h2>
           </CardHeader>
-          <CardBody className="space-y-2">
-            {d.pipelineFunnel.length === 0 && (
-              <p className="text-sm text-ink-muted">Pipeline ainda não configurada.</p>
-            )}
-            {d.pipelineFunnel.map((s) => {
-              const pct = (s.count / pipeMax) * 100;
-              return (
-                <div key={s.id}>
-                  <div className="mb-1 flex justify-between text-xs">
-                    <span className="flex items-center gap-1.5 text-ink-muted">
-                      <span className="h-2 w-2 rounded-full" style={{ backgroundColor: s.color }} />
-                      {s.name}
-                      {s.is_won && " ✓"}
-                      {s.is_lost && " ✕"}
-                    </span>
-                    <span className="font-medium">{s.count}</span>
-                  </div>
-                  <div className="h-2 w-full overflow-hidden rounded bg-canvas-surface-2">
-                    <div className="h-full" style={{ width: `${pct}%`, backgroundColor: s.color }} />
-                  </div>
-                </div>
-              );
-            })}
+          <CardBody>
+            <DailyChart data={report.por_dia} />
           </CardBody>
         </Card>
 
-        <Card>
-          <CardHeader>
-            <h2 className="text-sm font-semibold">Funil por estado (IA)</h2>
-          </CardHeader>
-          <CardBody className="space-y-2">
-            {FSM_STATES.map((s) => {
-              const v = d.funnel[s] ?? 0;
-              const pct = (v / max) * 100;
-              return (
-                <div key={s}>
-                  <div className="mb-1 flex justify-between text-xs">
-                    <span className="text-ink-muted">{STATE_LABELS[s]}</span>
-                    <span className="font-medium">{v}</span>
-                  </div>
-                  <div className="h-2 w-full overflow-hidden rounded bg-canvas-surface-2">
-                    <div className={`h-full ${STATE_COLORS[s]}`} style={{ width: `${pct}%` }} />
-                  </div>
-                </div>
-              );
-            })}
-          </CardBody>
-        </Card>
+        <div className="grid gap-4 lg:grid-cols-2">
+          <Card>
+            <CardHeader>
+              <h2 className="text-sm font-semibold">Por origem</h2>
+            </CardHeader>
+            <CardBody className="overflow-x-auto">
+              <table className="w-full text-xs">
+                <thead>
+                  <tr className="border-b border-line text-left text-[10px] uppercase tracking-wide text-ink-muted">
+                    <th className="py-1.5 pr-2 font-medium">Origem</th>
+                    <th className="py-1.5 pr-2 text-right font-medium">Novos</th>
+                    <th className="py-1.5 pr-2 text-right font-medium">Reuniões</th>
+                    <th className="py-1.5 text-right font-medium">Ganhos</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {report.por_origem.map((r) => (
+                    <tr key={r.source} className="border-b border-line/50">
+                      <td className="py-1.5 pr-2 text-ink">{SOURCE_LABELS[r.source] ?? r.source}</td>
+                      <td className="py-1.5 pr-2 text-right text-ink">{r.novos}</td>
+                      <td className="py-1.5 pr-2 text-right text-ink">{r.agendados}</td>
+                      <td className="py-1.5 text-right text-ink">{r.ganhos}</td>
+                    </tr>
+                  ))}
+                  {report.por_origem.length === 0 && (
+                    <tr>
+                      <td colSpan={4} className="py-4 text-center text-ink-faint">
+                        Sem leads no período.
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </CardBody>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <h2 className="text-sm font-semibold">Por responsável</h2>
+            </CardHeader>
+            <CardBody className="overflow-x-auto">
+              <table className="w-full text-xs">
+                <thead>
+                  <tr className="border-b border-line text-left text-[10px] uppercase tracking-wide text-ink-muted">
+                    <th className="py-1.5 pr-2 font-medium">Responsável</th>
+                    <th className="py-1.5 pr-2 text-right font-medium">Leads</th>
+                    <th className="py-1.5 pr-2 text-right font-medium">Reuniões</th>
+                    <th className="py-1.5 text-right font-medium">Ganhos</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {report.por_vendedor.map((r) => (
+                    <tr key={`${r.user_id}`} className="border-b border-line/50">
+                      <td className="py-1.5 pr-2 text-ink">{r.name}</td>
+                      <td className="py-1.5 pr-2 text-right text-ink">{r.leads}</td>
+                      <td className="py-1.5 pr-2 text-right text-ink">{r.agendados}</td>
+                      <td className="py-1.5 text-right text-ink">{r.ganhos}</td>
+                    </tr>
+                  ))}
+                  {report.por_vendedor.length === 0 && (
+                    <tr>
+                      <td colSpan={4} className="py-4 text-center text-ink-faint">
+                        Sem atividade no período.
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </CardBody>
+          </Card>
+        </div>
 
         <Card>
           <CardHeader>
-            <h2 className="text-sm font-semibold">Motivos de fechamento</h2>
+            <h2 className="text-sm font-semibold">Onde os leads estão agora (funil da pipeline)</h2>
           </CardHeader>
           <CardBody className="space-y-2">
-            {d.closed.length === 0 && (
-              <p className="text-sm text-ink-muted">Nenhuma conversa fechada ainda.</p>
-            )}
-            {d.closed.map((c) => (
-              <div key={c.reason} className="flex items-center justify-between text-sm">
-                <span>{REASON_LABELS[c.reason as ClosedReason] ?? c.reason}</span>
-                <span className="font-semibold">{c.count}</span>
+            {stageRows.map((r) => (
+              <div key={r.id} className="flex items-center gap-3">
+                <span className="w-40 shrink-0 truncate text-xs text-ink-soft">{r.name}</span>
+                <div className="h-4 flex-1 rounded-[4px] bg-canvas-deep/60">
+                  <div
+                    className="h-full rounded-[4px]"
+                    style={{ width: `${(r.count / maxStage) * 100}%`, backgroundColor: r.color, minWidth: r.count ? 6 : 0 }}
+                  />
+                </div>
+                <span className="w-10 text-right text-xs text-ink">{r.count}</span>
               </div>
             ))}
           </CardBody>
         </Card>
       </div>
     </>
-  );
-}
-
-function Stat({ label, value, accent }: { label: string; value: number | string; accent?: boolean }) {
-  return (
-    <Card>
-      <CardBody>
-        <div className={`text-2xl font-bold ${accent ? "text-accent-bronze" : "text-ink"}`}>
-          {value}
-        </div>
-        <div className="text-xs uppercase text-ink-muted">{label}</div>
-      </CardBody>
-    </Card>
   );
 }

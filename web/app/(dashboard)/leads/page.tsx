@@ -2,6 +2,8 @@ import { pool } from "@/lib/db";
 import type { Lead, PipelineStage, TenantMember, CustomFieldDef } from "@/lib/types";
 import { Header } from "@/components/layout/header";
 import { LeadsBoard } from "./_components/leads-board";
+import { OnboardingChecklist, type OnboardingStatus } from "./_components/onboarding-checklist";
+import { adminCall } from "@/lib/api";
 import { getCurrentTenant } from "@/lib/tenant";
 
 export const dynamic = "force-dynamic";
@@ -57,7 +59,7 @@ async function getStages(tenantId: number): Promise<PipelineStage[]> {
   return rows;
 }
 
-export default async function LeadsPage() {
+export default async function LeadsPage({ searchParams }: { searchParams?: { lead?: string } }) {
   const tenant = await getCurrentTenant();
   const [leads, stages, members, distribution, fieldDefs] = await Promise.all([
     getLeads(tenant.id),
@@ -67,6 +69,23 @@ export default async function LeadsPage() {
     getFieldDefs(tenant.id),
   ]);
   const openCount = leads.filter((l) => l.status === "open").length;
+
+  // Primeiro uso: sem nenhum lead, mostra o checklist de ativação no topo.
+  let onboarding: OnboardingStatus | null = null;
+  if (leads.length === 0) {
+    const [wa, agent, campaigns] = await Promise.all([
+      adminCall(`/admin/tenants/${tenant.slug}/whatsapp/status`, { method: "GET" }).catch(() => null) as Promise<{
+        connected?: boolean;
+      } | null>,
+      pool.query(`SELECT 1 FROM tenant_agent_settings WHERE tenant_id = $1`, [tenant.id]).catch(() => null),
+      pool.query(`SELECT 1 FROM campaigns WHERE tenant_id = $1 LIMIT 1`, [tenant.id]).catch(() => null),
+    ]);
+    onboarding = {
+      whatsappConnected: !!wa?.connected,
+      agentConfigured: (agent?.rowCount ?? 0) > 0,
+      hasCampaign: (campaigns?.rowCount ?? 0) > 0,
+    };
+  }
   return (
     <>
       <Header
@@ -74,7 +93,9 @@ export default async function LeadsPage() {
         subtitle={`${tenant.name} · ${openCount} abertos · ${leads.length - openCount} fechados (últimos 30d)`}
       />
       <div className="flex-1 overflow-hidden">
+        {onboarding && <OnboardingChecklist status={onboarding} />}
         <LeadsBoard
+          initialOpenWaId={searchParams?.lead ?? null}
           initial={leads}
           initialStages={stages}
           members={members}

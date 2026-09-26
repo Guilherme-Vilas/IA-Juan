@@ -102,7 +102,7 @@ export function PropertiesManager({
       )}
 
       {/* Lista */}
-      <div className="overflow-hidden rounded-xl border border-line">
+      <div className="overflow-x-auto rounded-xl border border-line">
         <table className="w-full text-sm">
           <thead>
             <tr className="border-b border-line bg-canvas-surface text-left text-[11px] uppercase tracking-wide text-ink-faint">

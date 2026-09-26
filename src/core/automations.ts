@@ -15,7 +15,10 @@ export type TriggerType =
   | "lead_won"
   | "lead_lost"
   | "no_reply"
-  | "campaign_replied";
+  | "campaign_replied"
+  | "appointment_scheduled"
+  | "appointment_no_show"
+  | "lead_dormant";
 export type ActionType =
   | "send_message"
   | "create_task"
@@ -52,6 +55,8 @@ type LeadLite = {
   score: number;
   source: string | null;
   pipeline_stage_id: number | null;
+  paused: boolean;
+  status: string;
 };
 
 // ===== CRUD =====
@@ -166,7 +171,7 @@ export async function deleteAutomation(tenantId: number, id: number): Promise<bo
 // ===== Disparo de gatilho =====
 async function loadLead(leadId: number): Promise<LeadLite | null> {
   const { rows } = await pool.query<LeadLite>(
-    `SELECT id, wa_id, nome, score, source, pipeline_stage_id FROM leads WHERE id = $1`,
+    `SELECT id, wa_id, nome, score, source, pipeline_stage_id, paused, status FROM leads WHERE id = $1`,
     [leadId],
   );
   return rows[0] ?? null;
@@ -295,6 +300,21 @@ async function executeAction(
 ): Promise<void> {
   switch (type) {
     case "send_message": {
+      // Guardas: lead pausado (humano assumiu) ou na blacklist (opt-out) NUNCA
+      // recebe mensagem de automação. Lead fechado pode — é o caso da
+      // reativação (lead_dormant); os outros gatilhos só pegam leads abertos.
+      if (lead.paused) {
+        logger.info({ leadId: lead.id }, "automation send_message: lead pausado — pulado");
+        return;
+      }
+      const { rows: bl } = await pool.query(
+        `SELECT 1 FROM prospect_blacklist WHERE tenant_id = $1 AND external_id = $2 LIMIT 1`,
+        [tenant.id, lead.wa_id],
+      );
+      if (bl.length) {
+        logger.info({ leadId: lead.id }, "automation send_message: lead na blacklist — pulado");
+        return;
+      }
       const text = renderTemplate(String(cfg.text ?? ""), lead).trim();
       if (!text) return;
       await sendText(tenant, lead.wa_id, text);
@@ -365,8 +385,8 @@ export async function advanceRuns(limit = 50): Promise<number> {
         await pool.query(`UPDATE automation_runs SET next_run_at=$1 WHERE id=$2`, [deferToMorning(tenant), run.id]);
         continue;
       }
-      await executeAction(tenant, lead, step.action_type, step.action_config);
-      executed++;
+      // Avança o ponteiro ANTES de executar: um crash no meio perde no máximo
+      // este passo — nunca manda a mesma mensagem duas vezes.
       const nextIdx = run.current_step + 1;
       const next = steps[nextIdx];
       if (!next) {
@@ -379,9 +399,12 @@ export async function advanceRuns(limit = 50): Promise<number> {
           run.id,
         ]);
       }
+      await executeAction(tenant, lead, step.action_type, step.action_config);
+      executed++;
     } catch (err) {
-      logger.error({ err, runId: run.id }, "automation: run step failed");
-      await finishRun(run.id).catch(() => undefined);
+      // Falha num passo NÃO cancela a cadência: o ponteiro já avançou, os
+      // próximos passos seguem no horário deles.
+      logger.error({ err, runId: run.id }, "automation: run step failed (cadência segue)");
     }
   }
   if (executed) logger.info({ executed }, "automations: steps executed");
@@ -413,5 +436,47 @@ export async function scanNoReplyAutomations(limit = 50): Promise<number> {
     }
   }
   if (started) logger.info({ started }, "automations: no_reply cadences started");
+  return started;
+}
+
+// ===== Re-engajamento de leads "mortos" =====
+// trigger_type='lead_dormant': dispara N dias depois do lead fechar (no_response,
+// not_interested, postponed) ou ser marcado como perdido. Um disparo por lead
+// por automação — sem loop. Roda no tick, junto do scan de no_reply.
+export async function scanDormantAutomations(limit = 50): Promise<number> {
+  const autos = await pool.query<AutomationRow>(
+    `SELECT * FROM automations WHERE enabled=true AND trigger_type='lead_dormant'`,
+  );
+  let started = 0;
+  for (const a of autos.rows) {
+    const days = Math.max(1, Number(a.trigger_config?.days ?? 30));
+    const reasonsRaw = a.trigger_config?.reasons;
+    const reasons =
+      Array.isArray(reasonsRaw) && reasonsRaw.length
+        ? (reasonsRaw as string[])
+        : ["no_response", "not_interested", "postponed", "lost"];
+    const closedReasons = reasons.filter((r) => r !== "lost");
+    const includeLost = reasons.includes("lost");
+    const { rows: leads } = await pool.query<LeadLite>(
+      `SELECT l.id, l.wa_id, l.nome, l.score, l.source, l.pipeline_stage_id
+         FROM leads l
+        WHERE l.tenant_id = $1 AND l.paused = false
+          AND (
+            (l.status = 'closed' AND l.closed_reason = ANY($2)
+              AND l.closed_at <= now() - ($3 || ' days')::interval)
+            OR ($4 AND l.outcome = 'lost'
+              AND l.outcome_at <= now() - ($3 || ' days')::interval)
+          )
+          AND NOT EXISTS (SELECT 1 FROM automation_runs r WHERE r.automation_id=$5 AND r.lead_id=l.id)
+        LIMIT $6`,
+      [a.tenant_id, closedReasons, String(days), includeLost, a.id, limit],
+    );
+    for (const lead of leads) {
+      if (!conditionsMatch(lead, a.conditions)) continue;
+      await startRun(a, lead).catch(() => undefined);
+      started++;
+    }
+  }
+  if (started) logger.info({ started }, "automations: lead_dormant reativações iniciadas");
   return started;
 }

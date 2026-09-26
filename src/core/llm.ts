@@ -1,5 +1,6 @@
 import OpenAI from "openai";
 import { config } from "../config.js";
+import { recordLlmUsage } from "./llm-budget.js";
 import { logger } from "./logger.js";
 
 export const openai = new OpenAI({ apiKey: config.OPENAI_API_KEY });
@@ -62,6 +63,12 @@ function logUsage(tag: string | undefined, model: string, usage: unknown, ms: nu
     },
     "openai.usage",
   );
+  // Orçamento por tenant: a tag é o slug (ou "escopo:slug").
+  if (tag) {
+    const slug = tag.includes(":") ? tag.split(":").pop()! : tag;
+    const total = (u?.prompt_tokens ?? 0) + (u?.completion_tokens ?? 0);
+    void recordLlmUsage(slug, total);
+  }
 }
 
 async function callOpenAI(model: string, opts: ChatOpts) {

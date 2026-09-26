@@ -105,6 +105,10 @@ export async function ingestLead(token: string, payload: IngestPayload): Promise
   if (created) {
     const { fireTrigger } = await import("./automations.js");
     await fireTrigger(tenant.id, "lead_created", lead.id).catch(() => undefined);
+    const { emitEvent } = await import("./outbound-webhooks.js");
+    await emitEvent(tenant.id, "lead.created", {
+      lead_id: lead.id, wa_id: waId, name: lead.nome, source: lead.source,
+    }).catch(() => undefined);
   }
 
   logger.info({ tenant: tenant.slug, waId, created, source: payload.source }, "ingest: lead capturado");

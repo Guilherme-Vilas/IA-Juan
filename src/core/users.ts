@@ -56,16 +56,24 @@ export async function createUser(input: {
   password: string;
   name?: string;
   is_superadmin?: boolean;
+  whatsapp_e164?: string;
 }): Promise<UserRow> {
   const { rows } = await pool.query<UserRow>(
-    `INSERT INTO users (email, password_hash, name, is_superadmin)
-     VALUES ($1, $2, $3, COALESCE($4, false))
+    `INSERT INTO users (email, password_hash, name, is_superadmin, whatsapp_e164)
+     VALUES ($1, $2, $3, COALESCE($4, false), COALESCE($5, ''))
      ON CONFLICT (email) DO UPDATE SET
        password_hash = EXCLUDED.password_hash,
        name = EXCLUDED.name,
+       whatsapp_e164 = COALESCE(NULLIF(EXCLUDED.whatsapp_e164, ''), users.whatsapp_e164),
        updated_at = now()
      RETURNING *`,
-    [input.email.toLowerCase(), hashPassword(input.password), input.name ?? "", input.is_superadmin ?? false],
+    [
+      input.email.toLowerCase(),
+      hashPassword(input.password),
+      input.name ?? "",
+      input.is_superadmin ?? false,
+      (input.whatsapp_e164 ?? "").replace(/\D/g, ""),
+    ],
   );
   return rows[0]!;
 }

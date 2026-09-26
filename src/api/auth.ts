@@ -1,6 +1,7 @@
 import crypto from "node:crypto";
 import type { FastifyInstance, FastifyRequest } from "fastify";
 import { logger } from "../core/logger.js";
+import { rateLimit } from "../core/rate-limit.js";
 import { pool } from "../core/db.js";
 import { redis } from "../core/redis.js";
 import {
@@ -33,6 +34,17 @@ export async function registerAuthRoutes(app: FastifyInstance) {
     const email = (body?.email ?? "").trim();
     const password = body?.password ?? "";
     if (!email || !password) return reply.code(400).send({ error: "email e password obrigatórios" });
+
+    // Anti força-bruta: janela de 15 min por IP e por e-mail alvo.
+    const ip = clientIp(req);
+    const [byIp, byEmail] = await Promise.all([
+      rateLimit(`login:ip:${ip}`, 30, 900),
+      rateLimit(`login:email:${email.toLowerCase()}`, 10, 900),
+    ]);
+    if (!byIp.allowed || !byEmail.allowed) {
+      logger.warn({ ip, email }, "auth: login rate-limited");
+      return reply.code(429).send({ error: "muitas tentativas — aguarde alguns minutos" });
+    }
 
     const user = await getUserByEmail(email);
     if (!user || !verifyPassword(password, user.password_hash)) {
@@ -145,6 +157,7 @@ export async function registerAuthRoutes(app: FastifyInstance) {
       password?: string;
       name?: string;
       is_superadmin?: boolean;
+      whatsapp_e164?: string;
       tenant_slug?: string;
       role?: TenantRole;
     };
@@ -156,6 +169,7 @@ export async function registerAuthRoutes(app: FastifyInstance) {
       password: body.password,
       name: body.name,
       is_superadmin: body.is_superadmin,
+      whatsapp_e164: body.whatsapp_e164,
     });
     if (body.tenant_slug) {
       const tenant = await getTenantBySlug(body.tenant_slug);

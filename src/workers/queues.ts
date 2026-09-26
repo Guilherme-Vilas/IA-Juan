@@ -10,7 +10,7 @@ export type InboundJob = {
 export type FollowupJob = {
   tenantId: number;
   waId: string;
-  stage: 1 | 2 | 3;
+  stage: number; // 1..MAX_FOLLOWUP_STEPS toques; steps.length+1 = fechamento
 };
 
 export type ProspectSendJob = {
@@ -83,7 +83,7 @@ export function debounceJobId(tenantId: number, waId: string): string {
   return `debounce-${tenantId}-${waId}`;
 }
 
-export function followupJobId(tenantId: number, waId: string, stage: 1 | 2 | 3): string {
+export function followupJobId(tenantId: number, waId: string, stage: number): string {
   return `followup-${tenantId}-${stage}-${waId}`;
 }
 
@@ -98,7 +98,8 @@ export function retryTurnJobId(tenantId: number, waId: string, attempt: number):
 }
 
 export async function cancelFollowups(tenantId: number, waId: string) {
-  for (const stage of [1, 2, 3] as const) {
+  // Até MAX_FOLLOWUP_STEPS toques + 1 estágio de fechamento.
+  for (const stage of [1, 2, 3, 4, 5, 6] as const) {
     const id = followupJobId(tenantId, waId, stage);
     const job = await followupQueue.getJob(id);
     if (job) {
@@ -111,10 +112,19 @@ export async function cancelFollowups(tenantId: number, waId: string) {
   }
 }
 
+// Agenda o PRIMEIRO toque conforme a config do tenant (delay do passo 1).
+// Config desabilitada → não agenda nada.
+export async function scheduleFirstFollowup(tenantId: number, waId: string) {
+  const { getFollowupConfig } = await import("../core/followups.js");
+  const cfg = await getFollowupConfig(tenantId).catch(() => null);
+  if (!cfg || !cfg.enabled || cfg.steps.length === 0) return;
+  await scheduleFollowup(tenantId, waId, 1, cfg.steps[0]!.delay_minutes * 60_000);
+}
+
 export async function scheduleFollowup(
   tenantId: number,
   waId: string,
-  stage: 1 | 2 | 3,
+  stage: number,
   delayMs: number,
 ) {
   const id = followupJobId(tenantId, waId, stage);
@@ -132,6 +142,8 @@ export async function scheduleFollowup(
     {
       jobId: id,
       delay: delayMs,
+      attempts: 3,
+      backoff: { type: "exponential", delay: 5 * 60_000 },
       removeOnComplete: true,
       removeOnFail: 50,
     },

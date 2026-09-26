@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { usePolling } from "@/lib/use-polling";
 import { useRouter } from "next/navigation";
 import { Card, CardBody, CardHeader } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -88,9 +89,8 @@ export function DiscoveryHub({ tenantSlug }: { tenantSlug: string }) {
 
   useEffect(() => {
     load();
-    const id = setInterval(load, 5000);
-    return () => clearInterval(id);
   }, [load]);
+  usePolling(load, 5000);
 
   const applyPreset = (p: (typeof PRESETS)[number]) => {
     setActivePreset(p.label);

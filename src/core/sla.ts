@@ -1,7 +1,7 @@
 import { pool } from "./db.js";
 import { logger } from "./logger.js";
 import { getTenantById } from "./tenants.js";
-import { sendText } from "./evolution.js";
+import { notifyLeadOwner } from "./notify.js";
 
 // Varre leads "esfriando": abertos, sem pausa, parados numa etapa com SLA
 // (sla_hours) por mais tempo que o permitido e ainda nao alertados. Notifica o
@@ -34,13 +34,18 @@ export async function scanSlaBreaches(limit = 50): Promise<number> {
   let notified = 0;
   for (const r of rows) {
     const tenant = await getTenantById(r.tenant_id);
-    if (!tenant?.owner_whatsapp_e164) continue;
+    if (!tenant?.owner_whatsapp_e164) {
+      // Sem canal de alerta: marca mesmo assim, senão a linha ocupa o topo do
+      // LIMIT pra sempre e trava os alertas dos outros tenants.
+      await pool.query(`UPDATE leads SET sla_alerted_at = now() WHERE id = $1`, [r.lead_id]).catch(() => undefined);
+      continue;
+    }
     const who = r.nome || r.wa_id;
     const text =
       `⏰ Lead esfriando: *${who}* está há mais de ${r.sla_hours}h na etapa ` +
       `"${r.stage_name}" sem avançar. Vale dar um toque.`;
     try {
-      await sendText(tenant, tenant.owner_whatsapp_e164, text);
+      await notifyLeadOwner(tenant, r.lead_id, text);
       await pool.query(`UPDATE leads SET sla_alerted_at = now() WHERE id = $1`, [r.lead_id]);
       notified++;
     } catch (err) {

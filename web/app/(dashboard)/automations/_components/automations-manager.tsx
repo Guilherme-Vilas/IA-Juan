@@ -21,6 +21,9 @@ const TRIGGER_LABELS: Record<AutomationTrigger, string> = {
   lead_lost: "Negócio perdido",
   no_reply: "Sem resposta",
   campaign_replied: "Respondeu campanha",
+  appointment_scheduled: "Reunião marcada",
+  appointment_no_show: "Não compareceu à reunião",
+  lead_dormant: "Reativar lead perdido/sumido",
 };
 
 export type CampaignOption = { id: number; name: string };
@@ -295,6 +298,19 @@ function Builder({
                     className={inputCls}
                   />
                   horas
+                </label>
+              )}
+              {d.trigger_type === "lead_dormant" && (
+                <label className="flex items-center gap-2 text-xs text-ink-muted">
+                  após
+                  <input
+                    type="number"
+                    min={1}
+                    value={(d.trigger_config.days as number) ?? 30}
+                    onChange={(e) => set({ trigger_config: { ...d.trigger_config, days: Number(e.target.value) } })}
+                    className={inputCls}
+                  />
+                  dias fechado/perdido
                 </label>
               )}
               {d.trigger_type === "campaign_replied" && (
