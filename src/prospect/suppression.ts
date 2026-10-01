@@ -117,11 +117,14 @@ export async function checkSendSuppression(
   tenantId: number,
   externalId: string,
   channel: "whatsapp" | "linkedin",
+  allowRecontact = false,
 ): Promise<string | null> {
+  // Blacklist (opt-out/LGPD) vale SEMPRE — nenhuma flag passa por cima.
   const black = await filterBlacklisted(tenantId, [externalId]);
   if (black.has(externalId)) return "blacklist (opt-out/manual)";
 
-  if (channel === "whatsapp") {
+  // Recontato intencional (refazer campanha/teste): pula a trava de lead do funil.
+  if (channel === "whatsapp" && !allowRecontact) {
     const suppressed = await filterSuppressedLeads(tenantId, [externalId]);
     if (suppressed.has(externalId)) return "lead do funil (aberto/sem interesse/decidido)";
   }

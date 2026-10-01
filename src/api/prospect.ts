@@ -56,12 +56,17 @@ async function suppressAndInsert(
   campaignId: number,
   channel: Channel,
   prospects: ProspectInput[],
+  // Recontato intencional (refazer campanha, testes): ignora a janela de 90d
+  // e a trava de lead existente. A BLACKLIST (opt-out) vale SEMPRE.
+  allowRecontact = false,
 ) {
   const ids = prospects.map((p) => p.external_id);
   const [blacklisted, recent, suppressedLeads] = await Promise.all([
     filterBlacklisted(tenantId, ids),
-    filterRecentlyProspected(tenantId, ids, campaignId),
-    channel === "whatsapp" ? filterSuppressedLeads(tenantId, ids) : Promise.resolve(new Set<string>()),
+    allowRecontact ? Promise.resolve(new Set<string>()) : filterRecentlyProspected(tenantId, ids, campaignId),
+    channel === "whatsapp" && !allowRecontact
+      ? filterSuppressedLeads(tenantId, ids)
+      : Promise.resolve(new Set<string>()),
   ]);
   const clean = prospects.filter(
     (p) => !blacklisted.has(p.external_id) && !recent.has(p.external_id) && !suppressedLeads.has(p.external_id),
@@ -73,7 +78,7 @@ async function suppressAndInsert(
       (p) => !blacklisted.has(p.external_id) && !recent.has(p.external_id) && suppressedLeads.has(p.external_id),
     ).length,
   };
-  const { inserted, duplicates } = await insertProspects(tenantId, campaignId, clean);
+  const { inserted, duplicates } = await insertProspects(tenantId, campaignId, clean, allowRecontact);
   return { inserted, duplicates, suppressed };
 }
 
@@ -254,7 +259,7 @@ export async function registerProspectRoutes(app: FastifyInstance) {
       const campaignId = Number((req.params as { id: string }).id);
       const campaign = await getCampaign(req.tenantId!, campaignId);
       if (!campaign) return reply.code(404).send({ error: "campaign not found" });
-      const body = req.body as { csv?: string };
+      const body = req.body as { csv?: string; allow_recontact?: boolean };
       if (!body?.csv) return reply.code(400).send({ error: "csv required" });
 
       const parsed = parseProspectsCsv(body.csv, campaign.channel);
@@ -263,6 +268,7 @@ export async function registerProspectRoutes(app: FastifyInstance) {
         campaignId,
         campaign.channel,
         parsed.prospects,
+        body.allow_recontact === true,
       );
       logger.info(
         { tenant: req.tenantSlug, campaignId, inserted, duplicates, invalid: parsed.invalid.length, suppressed },
@@ -280,7 +286,7 @@ export async function registerProspectRoutes(app: FastifyInstance) {
       if (campaign.channel !== "whatsapp") {
         return reply.code(400).send({ error: "importação de arquivo é só pra campanhas WhatsApp" });
       }
-      const body = req.body as { filename?: string; base64?: string };
+      const body = req.body as { filename?: string; base64?: string; allow_recontact?: boolean };
       if (!body?.base64) return reply.code(400).send({ error: "arquivo obrigatório" });
       let buf: Buffer;
       try {
@@ -297,6 +303,7 @@ export async function registerProspectRoutes(app: FastifyInstance) {
           campaignId,
           campaign.channel,
           parsed.prospects,
+          body.allow_recontact === true,
         );
         logger.info(
           { tenant: req.tenantSlug, campaignId, file: body.filename, found: parsed.found, inserted, duplicates, suppressed },

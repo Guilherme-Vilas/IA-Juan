@@ -38,6 +38,7 @@ export type ProspectRow = {
   raw_csv: Record<string, unknown>;
   composed_message: string | null;
   status: ProspectStatus;
+  allow_recontact: boolean;
   skip_reason: string | null;
   sent_at: Date | null;
   replied_at: Date | null;
@@ -182,6 +183,7 @@ export async function insertProspects(
   tenantId: number,
   campaignId: number,
   prospects: ProspectInput[],
+  allowRecontact = false,
 ): Promise<{ inserted: number; duplicates: number }> {
   if (prospects.length === 0) return { inserted: 0, duplicates: 0 };
 
@@ -190,8 +192,8 @@ export async function insertProspects(
 
   for (const p of prospects) {
     const res = await pool.query(
-      `INSERT INTO prospects (tenant_id, campaign_id, external_id, nome, empresa, cargo, raw_csv)
-       VALUES ($1,$2,$3,$4,$5,$6,$7)
+      `INSERT INTO prospects (tenant_id, campaign_id, external_id, nome, empresa, cargo, raw_csv, allow_recontact)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
        ON CONFLICT (campaign_id, external_id) DO NOTHING`,
       [
         tenantId,
@@ -201,6 +203,7 @@ export async function insertProspects(
         p.empresa ?? null,
         p.cargo ?? null,
         JSON.stringify(p.raw_csv ?? {}),
+        allowRecontact,
       ],
     );
     if (res.rowCount && res.rowCount > 0) inserted++;

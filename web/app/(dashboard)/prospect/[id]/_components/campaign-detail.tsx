@@ -48,6 +48,9 @@ export function CampaignDetail({
 }) {
   const router = useRouter();
   const [csv, setCsv] = useState("");
+  // Recontato intencional (refazer campanha/teste): ignora a janela de 90 dias
+  // e a trava de lead existente ao importar. Blacklist (opt-out) vale sempre.
+  const [allowRecontact, setAllowRecontact] = useState(false);
   const [uploadResult, setUploadResult] = useState<{
     inserted: number;
     duplicates: number;
@@ -81,7 +84,7 @@ export function CampaignDetail({
     try {
       const data = await call(`${campaignBase}/prospects`, {
         method: "POST",
-        body: JSON.stringify({ csv }),
+        body: JSON.stringify({ csv, allow_recontact: allowRecontact }),
       });
       setUploadResult(data);
       setCsv("");
@@ -107,7 +110,7 @@ export function CampaignDetail({
       });
       const data = await call(`${campaignBase}/prospects/import-file`, {
         method: "POST",
-        body: JSON.stringify({ filename: file.name, base64 }),
+        body: JSON.stringify({ filename: file.name, base64, allow_recontact: allowRecontact }),
       });
       setUploadResult(data);
       router.refresh();
@@ -242,7 +245,19 @@ export function CampaignDetail({
                 Header obrigatório: <code>{campaign.channel === "whatsapp" ? "telefone" : "linkedin_url"}</code>
                 . Opcionais: nome, empresa, cargo + qualquer coluna extra.
               </p>
-              <div className="flex flex-wrap gap-2">
+              <div className="flex flex-wrap items-center gap-2">
+                <label
+                  className="inline-flex cursor-pointer items-center gap-1.5 text-[11px] text-ink-soft"
+                  title="Importa mesmo quem já foi prospectado nos últimos 90 dias ou já é lead do funil. Quem pediu pra não receber (blacklist) continua protegido."
+                >
+                  <input
+                    type="checkbox"
+                    checked={allowRecontact}
+                    onChange={(e) => setAllowRecontact(e.target.checked)}
+                    className="h-3.5 w-3.5 rounded border-line bg-canvas-deep accent-accent-bronze"
+                  />
+                  Permitir recontato
+                </label>
                 {campaign.channel === "whatsapp" && (
                   <label
                     className={`inline-flex h-9 cursor-pointer items-center gap-2 rounded-md border border-accent-bronze/40 bg-accent-bronze/[0.07] px-4 text-[13px] text-accent-bronze-soft transition-colors hover:bg-accent-bronze/15 ${

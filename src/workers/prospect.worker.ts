@@ -50,7 +50,12 @@ const sendWorker = new Worker<ProspectSendJob>(
 
     // Defesa em profundidade: o estado pode ter mudado entre o import e o envio
     // (opt-out, virou lead, fechou negócio). Re-checa antes de gastar mensagem.
-    const suppression = await checkSendSuppression(tenant.id, prospect.external_id, campaign.channel);
+    const suppression = await checkSendSuppression(
+      tenant.id,
+      prospect.external_id,
+      campaign.channel,
+      prospect.allow_recontact,
+    );
     if (suppression) {
       await updateProspect(prospect.id, { status: "skipped", skip_reason: suppression });
       await logProspectEvent(prospect.id, "skipped", { reason: suppression });
