@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Card, CardBody, CardHeader } from "@/components/ui/card";
+import { DeleteCampaignButton } from "../../_components/delete-campaign-button";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -203,6 +204,13 @@ export function CampaignDetail({
                   <Pause size={14} /> Pausar
                 </Button>
               )}
+              <DeleteCampaignButton
+                tenantSlug={tenantSlug}
+                campaignId={campaign.id}
+                name={campaign.name}
+                status={campaign.status}
+                afterDelete="back"
+              />
             </div>
           </CardBody>
         </Card>

@@ -11,6 +11,7 @@ import {
 } from "@/lib/types";
 import { Plus, Send, MessageCircle, Reply, Activity } from "lucide-react";
 import { BlacklistButton } from "./_components/blacklist-manager";
+import { DeleteCampaignButton } from "./_components/delete-campaign-button";
 
 export const dynamic = "force-dynamic";
 
@@ -83,9 +84,17 @@ export default async function ProspectListPage() {
                     <CardBody>
                       <div className="flex items-start justify-between gap-2">
                         <h3 className="font-serif text-[15px] text-ink">{c.name}</h3>
-                        <Badge className={`${CAMPAIGN_STATUS_COLORS[c.status]} text-white`}>
-                          {CAMPAIGN_STATUS_LABELS[c.status]}
-                        </Badge>
+                        <div className="flex items-center gap-1">
+                          <Badge className={`${CAMPAIGN_STATUS_COLORS[c.status]} text-white`}>
+                            {CAMPAIGN_STATUS_LABELS[c.status]}
+                          </Badge>
+                          <DeleteCampaignButton
+                            tenantSlug={tenant.slug}
+                            campaignId={c.id}
+                            name={c.name}
+                            status={c.status}
+                          />
+                        </div>
                       </div>
                       <div className="mt-1.5 flex items-center gap-2 text-[11px] text-ink-muted">
                         <span className="capitalize">{c.channel}</span>

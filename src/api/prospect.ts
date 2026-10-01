@@ -240,7 +240,13 @@ export async function registerProspectRoutes(app: FastifyInstance) {
       const campaignId = Number((req.params as { id: string }).id);
       const c = await getCampaign(req.tenantId!, campaignId);
       if (!c) return reply.code(404).send({ error: "campaign not found" });
+      // Rodando não apaga — evita sumir com a campanha no meio de um disparo
+      // (jobs na fila apontariam pra prospects que não existem mais).
+      if (c.status === "running") {
+        return reply.code(400).send({ error: "pause a campanha antes de excluir" });
+      }
       await deleteCampaign(campaignId);
+      logger.info({ tenant: req.tenantSlug, campaignId, name: c.name }, "admin: campaign deleted");
       return reply.send({ ok: true });
     });
 
