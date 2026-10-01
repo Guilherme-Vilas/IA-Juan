@@ -35,7 +35,7 @@ const schema = z.object({
   // Validade do link de convite, em dias.
   INVITE_TTL_DAYS: z.coerce.number().default(2),
 
-  OPENAI_API_KEY: z.string().min(1),
+  OPENAI_API_KEY: z.string().min(1).transform((v) => v.trim()),
   OPENAI_MODEL_MAIN: z.string().default("gpt-4o-mini"),
   OPENAI_MODEL_FAST: z.string().default("gpt-4o-mini"),
   OPENAI_MODEL_AUDIO: z.string().default("whisper-1"),

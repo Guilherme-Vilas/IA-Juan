@@ -305,7 +305,17 @@ export async function registerProspectRoutes(app: FastifyInstance) {
           found: parsed.found,
         });
       } catch (err) {
-        return reply.code(400).send({ error: String(err instanceof Error ? err.message : err) });
+        const msg = String(err instanceof Error ? err.message : err);
+        logger.error({ err, tenant: req.tenantSlug, campaignId }, "import-file: falhou");
+        // Erro de credencial/quota do provedor de IA: problema de configuração
+        // da PLATAFORMA — não vaza o erro cru (com eco da chave) pro painel.
+        if (/401|api key|invalid_api_key|quota|insufficient_quota/i.test(msg)) {
+          return reply.code(502).send({
+            error:
+              "O serviço de IA está indisponível (credencial inválida ou sem crédito). A importação precisa dele pra mapear as colunas — avise o suporte da plataforma.",
+          });
+        }
+        return reply.code(400).send({ error: msg });
       }
     });
 
