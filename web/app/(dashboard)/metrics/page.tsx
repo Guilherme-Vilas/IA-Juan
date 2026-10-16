@@ -67,7 +67,7 @@ export default async function MetricsPage({ searchParams }: { searchParams?: { d
       `SELECT ps.id, ps.name, ps.color, ps.is_won, ps.is_lost, COUNT(l.id)::text AS count
          FROM pipeline_stages ps
          JOIN pipelines p ON p.id = ps.pipeline_id
-         LEFT JOIN leads l ON l.pipeline_stage_id = ps.id AND l.status = 'open'
+         LEFT JOIN leads l ON l.pipeline_stage_id = ps.id AND l.status = 'open' AND l.is_sandbox = false
         WHERE p.tenant_id = $1
         GROUP BY ps.id ORDER BY ps.position ASC, ps.id ASC`,
       [tenant.id],

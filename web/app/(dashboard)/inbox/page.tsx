@@ -28,6 +28,7 @@ async function getInboxLeads(tenantId: number): Promise<InboxLead[]> {
           LIMIT 1
        ) lm ON true
       WHERE l.tenant_id = $1
+        AND l.is_sandbox = false
         AND l.status = 'open'
         AND (
           l.state = 'HANDOFF'

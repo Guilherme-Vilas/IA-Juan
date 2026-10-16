@@ -43,6 +43,7 @@ async function getLeads(tenantId: number): Promise<Lead[]> {
   const { rows } = await pool.query<Lead>(
     `SELECT * FROM leads
        WHERE tenant_id = $1
+         AND is_sandbox = false
          AND (status = 'open' OR updated_at > now() - interval '30 days')${sc.sql}
        ORDER BY updated_at DESC
        LIMIT 500`,

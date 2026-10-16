@@ -2,6 +2,7 @@ import { Header } from "@/components/layout/header";
 import { agentApi } from "@/lib/api";
 import { getCurrentTenant } from "@/lib/tenant";
 import { PersonalizationForm } from "./_components/personalization-form";
+import { SandboxChat } from "./_components/sandbox-chat";
 
 export const dynamic = "force-dynamic";
 
@@ -25,7 +26,12 @@ export default async function PersonalizationPage() {
         subtitle={`${tenant.name} · ajuste como o agente conversa`}
       />
       <div className="flex-1 overflow-y-auto px-8 py-6">
-        <PersonalizationForm tenantSlug={tenant.slug} initial={prompts} error={error} />
+        <div className="grid gap-5 xl:grid-cols-[1fr_380px]">
+          <PersonalizationForm tenantSlug={tenant.slug} initial={prompts} error={error} />
+          <div className="xl:sticky xl:top-20 xl:self-start">
+            <SandboxChat tenantSlug={tenant.slug} />
+          </div>
+        </div>
       </div>
     </>
   );

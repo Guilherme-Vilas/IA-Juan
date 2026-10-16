@@ -422,7 +422,7 @@ export async function scanNoReplyAutomations(limit = 50): Promise<number> {
     const { rows: leads } = await pool.query<LeadLite>(
       `SELECT l.id, l.wa_id, l.nome, l.score, l.source, l.pipeline_stage_id
          FROM leads l
-        WHERE l.tenant_id = $1 AND l.status='open' AND l.paused=false
+        WHERE l.tenant_id = $1 AND l.status='open' AND l.paused=false AND l.is_sandbox=false
           AND l.last_user_at IS NOT NULL
           AND l.last_user_at <= now() - ($2 || ' hours')::interval
           AND NOT EXISTS (SELECT 1 FROM automation_runs r WHERE r.automation_id=$3 AND r.lead_id=l.id)
@@ -460,7 +460,7 @@ export async function scanDormantAutomations(limit = 50): Promise<number> {
     const { rows: leads } = await pool.query<LeadLite>(
       `SELECT l.id, l.wa_id, l.nome, l.score, l.source, l.pipeline_stage_id
          FROM leads l
-        WHERE l.tenant_id = $1 AND l.paused = false
+        WHERE l.tenant_id = $1 AND l.paused = false AND l.is_sandbox = false
           AND (
             (l.status = 'closed' AND l.closed_reason = ANY($2)
               AND l.closed_at <= now() - ($3 || ' days')::interval)

@@ -1,0 +1,35 @@
+# Staging = produção com outro nome de projeto (volumes/rede isolados) + portas
+# locais expostas. Usa os MESMOS serviços do docker-compose.prod.yml via override.
+#
+# Subir:
+#   docker compose -p vita-staging \
+#     -f docker-compose.prod.yml -f docker-compose.staging.yml \
+#     --env-file .env.staging up -d
+#
+# .env.staging: copie o .env de produção e troque:
+#   - EVOLUTION_API_KEY / instância → use um CHIP DESCARTÁVEL, nunca o do cliente
+#   - PUBLIC_BASE_URL / APP_PUBLIC_URL → domínio de staging (ou http://localhost)
+#   - SEED_ADMIN_EMAIL/PASSWORD próprios
+#   - POSTGRES_PASSWORD próprio
+#
+# O "-p vita-staging" cria volumes novos (vita-staging_pg-data etc.) — o banco
+# de produção nunca é tocado. Pra ensaiar uma migração com dados reais:
+#   gunzip -c pg-<data>.sql.gz | docker compose -p vita-staging exec -T postgres psql -U ia
+
+services:
+  app:
+    ports:
+      - "127.0.0.1:3100:3000"
+  web:
+    ports:
+      - "127.0.0.1:3101:3000"
+  evolution:
+    ports:
+      - "127.0.0.1:3180:8080"
+  postgres:
+    ports:
+      - "127.0.0.1:55432:5432"
+  # staging não precisa de backup diário
+  db-backup:
+    deploy:
+      replicas: 0

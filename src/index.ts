@@ -26,6 +26,8 @@ import { registerPipelineRoutes } from "./api/pipeline.js";
 import { registerCrmRoutes } from "./api/crm.js";
 import { registerPropertyRoutes } from "./api/properties.js";
 import { registerAutomationRoutes } from "./api/automations.js";
+import { registerSandboxRoutes } from "./api/sandbox.js";
+import { registerPlatformHealthRoutes } from "./api/platform-health.js";
 
 async function main() {
   // 25MB: comporta upload de mídia de campanha (16MB de arquivo vira ~21MB em base64).
@@ -74,6 +76,8 @@ async function main() {
   await registerCrmRoutes(app);
   await registerPropertyRoutes(app);
   await registerAutomationRoutes(app);
+  await registerSandboxRoutes(app);
+  await registerPlatformHealthRoutes(app);
 
   await app.listen({ host: "0.0.0.0", port: config.PORT });
   logger.info(

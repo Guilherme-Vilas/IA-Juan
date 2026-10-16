@@ -116,7 +116,7 @@ const REPLY_CLASS_GUIDANCE: Record<ReplyClass, string> = {
     "O lead pediu pra não receber mais mensagens. Confirme que não vai mais mandar mensagens, sem nenhuma oferta.",
 };
 
-function buildSystemPrompt(
+export function buildSystemPrompt(
   prompts: TenantPrompts,
   lead: LeadRow,
   agentSettings?: AgentSettingsRow | null,
@@ -330,7 +330,7 @@ function slotPresent(slots: Slots, key: string): boolean {
   return v !== undefined && v !== null && v !== "";
 }
 
-function autoAdvance(state: LeadState, slots: Slots, cfg: PlaybookConfig): LeadState {
+export function autoAdvance(state: LeadState, slots: Slots, cfg: PlaybookConfig): LeadState {
   if (state === "S0_ABERTURA" && slots.nome) return "S1_DESCOBERTA";
   if (state === "S1_DESCOBERTA" && cfg.advance_s1_to_s2_any.some((k) => slotPresent(slots, k)))
     return "S2_QUALIFICACAO";
@@ -381,41 +381,47 @@ export async function runTurn(
   waId: string,
   userText: string,
   pushName?: string,
-  retryContext?: { attempt: number },
+  retryContext?: { attempt?: number; sandbox?: boolean },
 ): Promise<FsmOutput> {
-  const isRetry = !!retryContext;
+  const isRetry = !!retryContext?.attempt;
   const currentAttempt = retryContext?.attempt ?? 0;
+  // Sandbox ("Testar IA" no painel): conversa de mentira com o prompt de
+  // verdade. NADA sai pro mundo: sem CRM, sem automações, sem agenda real,
+  // sem notificação pro dono. Só o turno da IA, igualzinho ao de produção.
+  const sandbox = !!retryContext?.sandbox;
 
   const existing = await getLead(tenant.id, waId);
   const isNewLead = !existing;
   const lead = existing ?? (await upsertLead(tenant.id, waId, { nome: pushName ?? null }));
 
-  // CRM: round-robin distribui o lead novo entre os vendedores (no-op se manual
-  // ou se ja tem dono). Best-effort — nunca trava o turno.
-  await autoAssignNewLead(tenant.id, lead.id, tenant.lead_distribution).catch((err) =>
-    logger.warn({ err, tenant: tenant.slug, waId }, "crm: auto-assign falhou (seguindo)"),
-  );
+  if (!sandbox) {
+    // CRM: round-robin distribui o lead novo entre os vendedores (no-op se manual
+    // ou se ja tem dono). Best-effort — nunca trava o turno.
+    await autoAssignNewLead(tenant.id, lead.id, tenant.lead_distribution).catch((err) =>
+      logger.warn({ err, tenant: tenant.slug, waId }, "crm: auto-assign falhou (seguindo)"),
+    );
 
-  // CRM: todo lead que fala com a IA entra no board ja no inicio do turno —
-  // inclusive pausado ou se o LLM falhar. O avanco de coluna segue no fim do turno.
-  await ensureLeadOnPipeline(tenant.id, lead.id, { reason: "entrada na pipeline" }).catch((err) =>
-    logger.warn({ err, tenant: tenant.slug, waId }, "pipeline: entrada falhou (seguindo)"),
-  );
+    // CRM: todo lead que fala com a IA entra no board ja no inicio do turno —
+    // inclusive pausado ou se o LLM falhar. O avanco de coluna segue no fim do turno.
+    await ensureLeadOnPipeline(tenant.id, lead.id, { reason: "entrada na pipeline" }).catch((err) =>
+      logger.warn({ err, tenant: tenant.slug, waId }, "pipeline: entrada falhou (seguindo)"),
+    );
+  }
 
   // Automacoes: dispara cadencia de lead novo; e cancela cadencias quando o lead
   // responde (stop_on_reply) — so em inbound real, nao em retry.
-  if (isNewLead) {
+  if (isNewLead && !sandbox) {
     await fireTrigger(tenant.id, "lead_created", lead.id).catch((err) =>
       logger.warn({ err, tenant: tenant.slug, waId }, "automations: lead_created falhou"),
     );
-  } else if (!isRetry) {
+  } else if (!isRetry && !sandbox) {
     await cancelRunsForLead(tenant.id, lead.id, { onlyStopOnReply: true }).catch(() => undefined);
   }
 
   // "Respondeu campanha": 1º turno após o handoff. Classifica a resposta e
   // dispara o gatilho DEPOIS do cancel acima (senão a própria resposta
   // cancelaria a cadência recém-criada). A marca é consumida uma única vez.
-  if (!isRetry) {
+  if (!isRetry && !sandbox) {
     const mark = await consumeCampaignReply(tenant.slug, waId).catch(() => null);
     if (mark) {
       const klass = await resolveReplyClass(tenant.id, waId, mark, userText).catch(() => null);
@@ -571,12 +577,14 @@ export async function runTurn(
         { tenant: tenant.slug, waId, attempts: currentAttempt },
         "fsm: max retries reached, handing off",
       );
-      await executeHandoff(
-        tenant,
-        { ...lead, state: "HANDOFF" },
-        `IA falhou ${currentAttempt}x após instabilidade técnica`,
-      ).catch(() => undefined);
-      await pauseAi(tenant, waId);
+      if (!sandbox) {
+        await executeHandoff(
+          tenant,
+          { ...lead, state: "HANDOFF" },
+          `IA falhou ${currentAttempt}x após instabilidade técnica`,
+        ).catch(() => undefined);
+        await pauseAi(tenant, waId);
+      }
       replyText =
         "Desculpa a demora — tô com uma instabilidade aqui. Vou pedir pro " +
         tenant.owner_name +
@@ -678,8 +686,10 @@ export async function runTurn(
           closedByHandoff = true;
           closedReason = "handoff";
           const motivo = String(args.motivo ?? "handoff solicitado");
-          await executeHandoff(tenant, { ...lead, state: "HANDOFF", slots: workingSlots }, motivo);
-          await pauseAi(tenant, waId);
+          if (!sandbox) {
+            await executeHandoff(tenant, { ...lead, state: "HANDOFF", slots: workingSlots }, motivo);
+            await pauseAi(tenant, waId);
+          }
           replyText =
             (msg.content && sanitizeReply(msg.content).clean) ||
             `Beleza! Vou chamar o ${tenant.owner_name} agora pra falar com você. Assim que ele puder, te responde por aqui mesmo 🙌`;
@@ -713,7 +723,11 @@ export async function runTurn(
             slots: workingSlots,
             nome: workingSlots.nome ?? lead.nome,
           };
-          const pick = await confirmSlot(tenant, leadForConfirm, idx, channel);
+          // Sandbox: valida o índice contra os horários oferecidos mas NÃO cria
+          // evento no calendário nem notifica o dono — agendamento de mentira.
+          const pick = sandbox
+            ? ((await getOfferedSlots(tenant, waId))[idx] ?? null)
+            : await confirmSlot(tenant, leadForConfirm, idx, channel);
           if (pick) {
             workingState = "S5_CONFIRMADO";
             closedReason = "scheduled";
@@ -799,6 +813,11 @@ export async function runTurn(
   // Reflexo 100% no CRM: a fase canonica que a IA atingiu recalcula a coluna do
   // lead na pipeline da empresa. Handoff e agendamento sao fases "fortes" que
   // refletem mesmo sem mudar leads.state. Best-effort — nao trava o turno.
+  if (sandbox) {
+    // Sandbox: devolve o resultado sem refletir no CRM nem emitir webhooks.
+    return { replyText, newState: workingState, closedReason, closedByHandoff };
+  }
+
   const boardPhase: LeadState = closedByHandoff
     ? "HANDOFF"
     : closedReason === "scheduled" || workingState === "S5_CONFIRMADO"

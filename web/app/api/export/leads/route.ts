@@ -17,7 +17,7 @@ export async function GET() {
        FROM leads l
        LEFT JOIN pipeline_stages ps ON ps.id = l.pipeline_stage_id
        LEFT JOIN users u ON u.id = l.assigned_user_id
-      WHERE l.tenant_id = $1
+      WHERE l.tenant_id = $1 AND l.is_sandbox = false
       ORDER BY l.updated_at DESC
       LIMIT 10000`,
     [tenant.id],

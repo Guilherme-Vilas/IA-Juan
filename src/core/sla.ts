@@ -22,6 +22,7 @@ export async function scanSlaBreaches(limit = 50): Promise<number> {
        JOIN pipeline_stages ps ON ps.id = l.pipeline_stage_id
       WHERE l.status = 'open'
         AND l.paused = false
+        AND l.is_sandbox = false
         AND ps.sla_hours IS NOT NULL
         AND ps.is_won = false AND ps.is_lost = false
         AND l.sla_alerted_at IS NULL

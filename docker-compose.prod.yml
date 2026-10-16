@@ -218,8 +218,29 @@ services:
       app:
         condition: service_started
 
+  # Backup diário do Postgres (dump comprimido + retenção).
+  # IMPORTANTE: copie o volume pg-backups pra FORA do servidor (rclone/restic/
+  # snapshot) — backup no mesmo disco não protege de disco morto.
+  db-backup:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      - PGHOST=postgres
+      - PGUSER=ia
+      - PGPASSWORD=${POSTGRES_PASSWORD:-ia}
+      - BACKUP_RETENTION_DAYS=${BACKUP_RETENTION_DAYS:-14}
+      - BACKUP_INTERVAL_SECONDS=${BACKUP_INTERVAL_SECONDS:-86400}
+    volumes:
+      - pg-backups:/backups
+      - ./scripts/backup-db.sh:/backup-db.sh:ro
+    entrypoint: ["/bin/sh", "/backup-db.sh"]
+
 volumes:
   redis-data:
   pg-data:
   evolution-data:
   app-media:
+  pg-backups:

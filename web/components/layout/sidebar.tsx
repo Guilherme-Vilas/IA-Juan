@@ -6,6 +6,7 @@ import { usePathname } from "next/navigation";
 import {
   Menu,
   X,
+  HeartPulse,
   LayoutDashboard,
   KanbanSquare,
   Calendar,
@@ -67,6 +68,7 @@ const groups: NavGroup[] = [
   {
     label: "Plataforma",
     items: [
+      { href: "/health", label: "Saúde", icon: HeartPulse, superadmin: true },
       { href: "/tenants", label: "Instâncias", icon: Server, superadmin: true },
       { href: "/users", label: "Usuários", icon: Users, superadmin: true },
       { href: "/invites", label: "Convites", icon: Ticket, superadmin: true },

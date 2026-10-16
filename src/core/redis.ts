@@ -4,6 +4,9 @@ import { config } from "../config.js";
 export const redis = new IORedis(config.REDIS_URL, {
   maxRetriesPerRequest: null,
   enableReadyCheck: false,
+  // lazyConnect: só conecta no primeiro comando (com fila offline, zero impacto
+  // em runtime) — e permite importar módulos em testes sem Redis de pé.
+  lazyConnect: true,
 });
 
 export const bullConnection = { connection: redis };

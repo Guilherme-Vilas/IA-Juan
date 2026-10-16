@@ -15,7 +15,8 @@
     "backfill:campaign-pipeline": "tsx scripts/backfill-campaign-pipeline.ts",
     "check:llm": "tsx scripts/check-llm.ts",
     "calendar:auth": "tsx scripts/calendar-auth.ts",
-    "typecheck": "tsc -p tsconfig.json --noEmit"
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "tsc -p tsconfig.tests.json --noEmit && node --import tsx --test tests/*.test.ts"
   },
   "dependencies": {
     "@fastify/jwt": "^9.1.0",

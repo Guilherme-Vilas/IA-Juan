@@ -47,7 +47,7 @@ export async function getFunnelReport(tenantId: number, days: number): Promise<F
          COUNT(*) FILTER (WHERE l.outcome = 'won' AND l.outcome_at >= now() - make_interval(days => $2))::text AS ganhos,
          COUNT(*) FILTER (WHERE l.outcome = 'lost' AND l.outcome_at >= now() - make_interval(days => $2))::text AS perdidos,
          COALESCE(SUM(l.value_cents) FILTER (WHERE l.outcome = 'won' AND l.outcome_at >= now() - make_interval(days => $2)), 0)::text AS valor_ganho_cents
-       FROM leads l WHERE l.tenant_id = $1`,
+       FROM leads l WHERE l.tenant_id = $1 AND l.is_sandbox = false`,
       [tenantId, days, QUALIFIED_STATES],
     ),
     pool.query<{ source: string; novos: string; agendados: string; ganhos: string }>(
@@ -57,7 +57,7 @@ export async function getFunnelReport(tenantId: number, days: number): Promise<F
               COUNT(*) FILTER (WHERE l.outcome = 'won')::text AS ganhos
          FROM leads l
          LEFT JOIN appointments a ON a.lead_id = l.id
-        WHERE l.tenant_id = $1 AND l.created_at >= now() - make_interval(days => $2)
+        WHERE l.tenant_id = $1 AND l.is_sandbox = false AND l.created_at >= now() - make_interval(days => $2)
         GROUP BY 1 ORDER BY COUNT(*) DESC LIMIT 10`,
       [tenantId, days],
     ),
@@ -70,7 +70,7 @@ export async function getFunnelReport(tenantId: number, days: number): Promise<F
          FROM leads l
          LEFT JOIN users u ON u.id = l.assigned_user_id
          LEFT JOIN appointments a ON a.lead_id = l.id AND a.created_at >= now() - make_interval(days => $2)
-        WHERE l.tenant_id = $1 AND l.updated_at >= now() - make_interval(days => $2)
+        WHERE l.tenant_id = $1 AND l.is_sandbox = false AND l.updated_at >= now() - make_interval(days => $2)
         GROUP BY 1, 2 ORDER BY COUNT(DISTINCT l.id) DESC LIMIT 10`,
       [tenantId, days],
     ),
@@ -83,7 +83,7 @@ export async function getFunnelReport(tenantId: number, days: number): Promise<F
               ) AS d(day)
          LEFT JOIN (
            SELECT created_at::date AS day, COUNT(*) AS novos FROM leads
-            WHERE tenant_id = $1 AND created_at >= now() - make_interval(days => $2) GROUP BY 1
+            WHERE tenant_id = $1 AND is_sandbox = false AND created_at >= now() - make_interval(days => $2) GROUP BY 1
          ) n ON n.day = d.day
          LEFT JOIN (
            SELECT created_at::date AS day, COUNT(*) AS agendados FROM appointments

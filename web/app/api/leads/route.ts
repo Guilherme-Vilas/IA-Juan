@@ -14,7 +14,7 @@ export async function GET() {
             pipeline_stage_id, stage_manual, outcome, outcome_reason, outcome_at, stage_entered_at,
             value_cents, assigned_user_id, custom_fields, source_detail
        FROM leads
-      WHERE tenant_id = $1${sc.sql}
+      WHERE tenant_id = $1 AND is_sandbox = false${sc.sql}
       ORDER BY updated_at DESC
       LIMIT 500`,
     [tenant.id, ...sc.params],
