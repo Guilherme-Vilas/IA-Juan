@@ -49,7 +49,11 @@ const worker = new Worker<RetryTurnJob>(
     const tenant = await requireTenantById(tenantId);
     logger.info({ tenant: tenant.slug, waId, attempt }, "retry-turn: starting");
 
-    await sendPresence(tenant, waId, "composing").catch(() => undefined);
+    // Mesmo guard do inbound: lead pausado não recebe "digitando…" à toa.
+    const leadBefore = await getLead(tenantId, waId);
+    if (!leadBefore?.paused) {
+      await sendPresence(tenant, waId, "composing").catch(() => undefined);
+    }
 
     // Trava por lead compartilhada com o inbound: se um turno normal está
     // rodando (lead voltou a falar), o retry espera 5s e tenta de novo.

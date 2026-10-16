@@ -88,7 +88,15 @@ const worker = new Worker<InboundJob>(
       // lead respondeu → cancela qualquer follow-up pendente
       await cancelFollowups(tenantId, waId);
 
-      await sendPresence(tenant, waId, "composing").catch(() => undefined);
+      // IA pausada não vai responder — não mostra "digitando…" à toa (o lead
+      // ficaria esperando uma resposta que não vem). O runTurn ainda roda pra
+      // registrar o turno e logar o motivo do silêncio.
+      const leadBefore = await getLead(tenantId, waId);
+      if (!leadBefore?.paused) {
+        await sendPresence(tenant, waId, "composing").catch(() => undefined);
+      } else {
+        logger.info({ tenant: tenant.slug, waId }, "lead pausado — presença suprimida (IA não vai responder)");
+      }
 
       try {
         const result = await runTurn(tenant, waId, text, pushName);
