@@ -19,7 +19,9 @@ export type TenantPrompts = {
 };
 
 const CACHE_KEY = (tenantId: number) => `prompts:${tenantId}`;
-const CACHE_TTL_S = 300; // 5min — edicao via painel reflete em no max 5min (ou invalida no save)
+// TTL curto: o save invalida E regrava (write-through), então o TTL é só um
+// teto pro pior caso (corrida de leitura concorrente reenchendo com valor velho).
+const CACHE_TTL_S = 60;
 
 export async function getTenantPrompts(tenantId: number): Promise<TenantPrompts> {
   // 1) Redis cache
@@ -68,6 +70,27 @@ export async function upsertTenantPrompts(
     [tenantId, patch.system ?? null, patch.knowledge ?? null, patch.objections ?? null, patch.examples ?? null],
   );
   await invalidatePromptsCache(tenantId);
+  // Write-through: regrava o cache com o valor NOVO lido do banco (pós-commit).
+  // Sem isso, uma leitura concorrente que buscou o valor antigo milissegundos
+  // antes do commit poderia reencher o cache com o prompt velho.
+  try {
+    const { rows } = await pool.query<TenantPromptsRow>(
+      `SELECT * FROM tenant_prompts WHERE tenant_id = $1`,
+      [tenantId],
+    );
+    const row = rows[0];
+    if (row) {
+      const fresh: TenantPrompts = {
+        system: row.system ?? "",
+        knowledge: row.knowledge ?? "",
+        objections: row.objections ?? "",
+        examples: row.examples ?? "",
+      };
+      await redis.set(CACHE_KEY(tenantId), JSON.stringify(fresh), "EX", CACHE_TTL_S);
+    }
+  } catch {
+    /* cache é best-effort — o del acima já garante a leitura fresca */
+  }
 }
 
 export async function invalidatePromptsCache(tenantId: number): Promise<void> {

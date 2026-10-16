@@ -8,6 +8,18 @@ export async function loadPrompts(tenantId: number): Promise<TenantPrompts> {
   return getTenantPrompts(tenantId);
 }
 
+// Exemplos de conversa (few-shot) entram no começo da conversa, onde o estilo
+// é definido — capados pra não estourar tokens. Antes, a aba "Exemplos" do
+// painel NÃO entrava em nenhum turno (o cliente editava e nada mudava).
+const EXAMPLES_CAP_CHARS = 6000;
+
+function examplesBlock(prompts: TenantPrompts): string {
+  const ex = (prompts.examples ?? "").trim();
+  if (!ex) return "";
+  const body = ex.length > EXAMPLES_CAP_CHARS ? ex.slice(0, EXAMPLES_CAP_CHARS) + "\n(…exemplos truncados)" : ex;
+  return "## Exemplos de conversa — siga este estilo à risca\n" + body;
+}
+
 /**
  * Retorna só as seções relevantes para o estado atual,
  * pra manter o prompt enxuto e evitar rate limit.
@@ -16,7 +28,7 @@ export function contextFor(prompts: TenantPrompts, state: string): string {
   switch (state) {
     case "S0_ABERTURA":
     case "S1_DESCOBERTA":
-      return "";
+      return examplesBlock(prompts);
     case "S2_QUALIFICACAO":
       return extractSection(prompts.knowledge, "## 3. Como ler capacidade mensal");
     case "S3_EDUCACAO":
