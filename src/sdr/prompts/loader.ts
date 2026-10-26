@@ -24,11 +24,18 @@ function examplesBlock(prompts: TenantPrompts): string {
  * Retorna só as seções relevantes para o estado atual,
  * pra manter o prompt enxuto e evitar rate limit.
  */
-export function contextFor(prompts: TenantPrompts, state: string): string {
+export function contextFor(
+  prompts: TenantPrompts,
+  state: string,
+  opts: { campaignLead?: boolean } = {},
+): string {
   switch (state) {
     case "S0_ABERTURA":
     case "S1_DESCOBERTA":
-      return examplesBlock(prompts);
+      // Lead de campanha NÃO recebe os exemplos de primeiro contato orgânico:
+      // o few-shot de "Oi! Como posso te chamar?" ensina exatamente o
+      // comportamento que as regras de campanha proíbem (re-saudação fria).
+      return opts.campaignLead ? "" : examplesBlock(prompts);
     case "S2_QUALIFICACAO":
       return extractSection(prompts.knowledge, "## 3. Como ler capacidade mensal");
     case "S3_EDUCACAO":

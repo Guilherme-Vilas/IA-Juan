@@ -22,7 +22,7 @@ import { redis, keys } from "../core/redis.js";
 import { syncLeadStage, ensureLeadOnPipeline, getStageGoalForLead } from "../core/pipeline.js";
 import { autoAssignNewLead } from "../core/crm.js";
 import { fireTrigger, cancelRunsForLead } from "../core/automations.js";
-import { consumeCampaignReply, getLeadReplyClass, resolveReplyClass } from "../prospect/campaign-reply.js";
+import { consumeCampaignReply, resolveReplyClass } from "../prospect/campaign-reply.js";
 import { OPTOUT_CONFIRMATION } from "../prospect/suppression.js";
 import type { ReplyClass } from "../prospect/classify.js";
 import { config } from "../config.js";
@@ -148,7 +148,7 @@ export function buildSystemPrompt(
 
   // ===== BLOCO VARIÁVEL (muda por turno/lead — não cacheado; vem por último) =====
   const variable: string[] = [];
-  const extra = contextFor(prompts, lead.state);
+  const extra = contextFor(prompts, lead.state, { campaignLead: !!lead.source?.startsWith("campaign:") });
   if (extra) variable.push("# Contexto adicional pra este estado", extra, "");
   if (stageGoal) variable.push("# Objetivo nesta etapa da pipeline", stageGoal, "");
   if (knowledgeContext) variable.push(knowledgeContext, "");
@@ -421,10 +421,16 @@ export async function runTurn(
   // "Respondeu campanha": 1º turno após o handoff. Classifica a resposta e
   // dispara o gatilho DEPOIS do cancel acima (senão a própria resposta
   // cancelaria a cadência recém-criada). A marca é consumida uma única vez.
+  // Classe da reação à campanha — vale APENAS no turno em que a resposta
+  // chegou. Antes era relida do banco a cada turno e a IA ficava presa na
+  // postura da 1ª reação ("se reapresente", "não qualifique", ou pior:
+  // "encerre como adiado") pra sempre enquanto o lead estava em S0/S1.
+  let campaignReplyClass: ReplyClass | null = null;
   if (!isRetry && !sandbox) {
     const mark = await consumeCampaignReply(tenant.slug, waId).catch(() => null);
     if (mark) {
       const klass = await resolveReplyClass(tenant.id, waId, mark, userText).catch(() => null);
+      campaignReplyClass = klass; // calibra SÓ este turno (a 1ª resposta da IA)
       if (klass === "opt_out") {
         await closeConversation(tenant.id, waId, "not_interested");
         logger.info({ tenant: tenant.slug, waId, prospectId: mark.prospectId }, "campanha: opt-out via IA — IA não responde");
@@ -508,7 +514,7 @@ export async function runTurn(
   const toolsForTurn = hasCatalog ? [...SDR_TOOLS, PROPERTY_TOOL] : SDR_TOOLS;
 
   const history = await loadHistory(tenant.slug, waId, lead.id);
-  const replyClass = lead.source?.startsWith("campaign:") ? await getLeadReplyClass(lead.id).catch(() => null) : null;
+  const replyClass = campaignReplyClass;
   const systemPrompt = buildSystemPrompt(
     prompts,
     lead,

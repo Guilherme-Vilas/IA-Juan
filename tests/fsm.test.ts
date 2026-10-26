@@ -110,6 +110,25 @@ test("prompt: calibração NÃO entra em fase avançada (a conversa já diz mais
   assert.doesNotMatch(p, /LEITURA DA RESPOSTA À CAMPANHA/);
 });
 
+test("prompt: SEM classe explícita não há calibração — ela é one-shot do turno da resposta", () => {
+  // Regressão: a classe era relida do banco a cada turno e prendia a IA na
+  // postura da 1ª reação (re-apresentação eterna / tentar encerrar sempre).
+  const p = buildSystemPrompt(prompts, lead({ source: "campaign:7", state: "S1_DESCOBERTA" }));
+  assert.doesNotMatch(p, /LEITURA DA RESPOSTA À CAMPANHA/);
+});
+
+test("contextFor: lead de campanha NÃO recebe exemplos de primeiro contato", () => {
+  assert.equal(contextFor(prompts, "S1_DESCOBERTA", { campaignLead: true }), "");
+  assert.match(contextFor(prompts, "S1_DESCOBERTA", { campaignLead: false }), /exemplo de estilo/);
+});
+
+test("prompt: lead de campanha em S1 fica sem o few-shot orgânico", () => {
+  const p = buildSystemPrompt(prompts, lead({ source: "campaign:7", state: "S1_DESCOBERTA" }));
+  assert.doesNotMatch(p, /exemplo de estilo/);
+  const organico = buildSystemPrompt(prompts, lead({ source: null, state: "S1_DESCOBERTA" }));
+  assert.match(organico, /exemplo de estilo/);
+});
+
 test("prompt: retorno de conversa fechada recebe o contexto do motivo", () => {
   const p = buildSystemPrompt(prompts, lead({}), null, "not_interested");
   assert.match(p, /RETORNO de conversa fechada/);
