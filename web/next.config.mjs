@@ -6,6 +6,11 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   reactStrictMode: true,
+  // Typecheck e lint rodam no CI (tsc --noEmit + build no GitHub Actions).
+  // No build da IMAGEM, pular essas fases corta >50% da memória/tempo —
+  // era a fase em que o build morria por OOM no servidor.
+  typescript: { ignoreBuildErrors: true },
+  eslint: { ignoreDuringBuilds: true },
   // Garante que o alias `@/...` resolva no build de produção mesmo em
   // ambientes onde o tsconfig paths não é aplicado (ex.: certos Docker setups).
   webpack: (config) => {

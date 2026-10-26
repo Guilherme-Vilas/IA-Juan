@@ -186,7 +186,10 @@ services:
         condition: service_started
 
   web:
-    build: ./web
+    build:
+      context: ./web
+      args:
+        - DASHBOARD_ALLOWED_ORIGINS=${DASHBOARD_ALLOWED_ORIGINS:-app.systemvita.com.br}
     restart: unless-stopped
     expose:
       - "3001"
