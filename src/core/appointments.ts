@@ -129,7 +129,12 @@ async function scanOwnerNudges(tenantOf: (id: number) => Promise<TenantRow | nul
       );
       await pool.query(`UPDATE appointments SET owner_nudge_sent_at = now() WHERE id = $1`, [r.id]);
     } catch (err) {
-      logger.error({ err, appointmentId: r.id }, "cutucada pós-reunião: envio falhou");
+      // Marca mesmo com falha de envio: sem isso, um owner_whatsapp inválido
+      // faria esta linha re-tentar a CADA tick por 3 dias (tempestade de retry).
+      await pool
+        .query(`UPDATE appointments SET owner_nudge_sent_at = now() WHERE id = $1`, [r.id])
+        .catch(() => undefined);
+      logger.error({ err, appointmentId: r.id }, "cutucada pós-reunião: envio falhou (não re-tenta)");
     }
   }
 }

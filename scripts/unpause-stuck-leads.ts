@@ -6,7 +6,9 @@ import { logger } from "../src/core/logger.js";
 // histórico da Evolution em reconexão do chip — corrigido no webhook, mas quem
 // já foi pausado fica mudo até alguém notar).
 //
-// Critério: lead pausado CUJA ÚLTIMA PALAVRA É DELE (está esperando resposta).
+// Critério: lead pausado CUJA ÚLTIMA PALAVRA É DELE (está esperando resposta),
+// aberto OU fechado (um lead fechado+pausado fica invisível no board). Ao
+// aplicar, despausa E reabre a conversa — o lead volta pro funil.
 // Pausa manual legítima normalmente tem o dono respondendo depois — ainda
 // assim, rode o dry-run e revise a lista antes de aplicar.
 //
@@ -30,7 +32,6 @@ async function run() {
        FROM leads l JOIN tenants t ON t.id = l.tenant_id
       WHERE l.paused = true
         AND l.is_sandbox = false
-        AND l.status = 'open'
         AND l.last_user_at IS NOT NULL
         AND (l.last_assistant_at IS NULL OR l.last_user_at > l.last_assistant_at)
         AND ($1::text IS NULL OR t.slug = $1)
@@ -48,6 +49,9 @@ async function run() {
     await pool.query(
       `UPDATE leads
           SET paused = false,
+              status = 'open',
+              closed_reason = NULL,
+              closed_at = NULL,
               state = CASE WHEN state = 'HANDOFF' THEN 'S1_DESCOBERTA' ELSE state END,
               updated_at = now()
         WHERE id = $1`,

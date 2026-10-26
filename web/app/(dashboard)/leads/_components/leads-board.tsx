@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import type { Lead, PipelineStage, TenantMember, CustomFieldDef } from "@/lib/types";
+import { REASON_LABELS } from "@/lib/types";
 import { LeadCard } from "./lead-card";
 import { LeadDrawer } from "./lead-drawer";
 import { StageEditor } from "./stage-editor";
@@ -110,7 +111,7 @@ export function LeadsBoard({
   const firstStageId = stages[0]?.id ?? null;
   const q = query.trim().toLowerCase();
   const qDigits = q.replace(/\D/g, "");
-  const visible = leads.filter(onBoard).filter((l) => {
+  const matchesFilters = (l: Lead) => {
     if (q) {
       const nome = (l.nome ?? (l.slots as { nome?: string })?.nome ?? "").toLowerCase();
       const phoneMatch = qDigits.length >= 4 && l.wa_id.includes(qDigits);
@@ -119,7 +120,11 @@ export function LeadsBoard({
     if (assigneeFilter && String(l.assigned_user_id ?? "") !== assigneeFilter) return false;
     if (scoreFilter && l.score_label !== scoreFilter) return false;
     return true;
-  });
+  };
+  const visible = leads.filter(onBoard).filter(matchesFilters);
+  // Busca ativa também encontra quem SAIU do funil (fechado como sem resposta/
+  // sem interesse/adiado) — senão "o lead sumiu" e nem a busca acha.
+  const hiddenMatches = q ? leads.filter((l) => !onBoard(l)).filter(matchesFilters).slice(0, 12) : [];
   const stageOf = (l: Lead) => l.pipeline_stage_id ?? firstStageId;
 
   function performMove(waId: string, stageId: number, reason?: string) {
@@ -245,6 +250,30 @@ export function LeadsBoard({
           </button>
         </div>
       </div>
+
+      {hiddenMatches.length > 0 && (
+        <div className="border-b border-line/70 bg-canvas-deep/40 px-4 py-2">
+          <div className="mb-1.5 text-[10px] uppercase tracking-wide text-ink-faint">
+            Fora do funil ({hiddenMatches.length}) — conversas encerradas que batem com a busca
+          </div>
+          <div className="flex flex-wrap gap-2">
+            {hiddenMatches.map((l) => (
+              <button
+                key={l.wa_id}
+                onClick={() => setSelected(l.wa_id)}
+                className="flex items-center gap-2 rounded-lg border border-line bg-canvas-surface px-2.5 py-1.5 text-left text-xs hover:border-accent-bronze/40"
+              >
+                <span className="text-ink">{l.nome ?? (l.slots as { nome?: string })?.nome ?? l.wa_id}</span>
+                <span className="text-ink-faint">{l.wa_id}</span>
+                <span className="rounded bg-canvas-surface-2 px-1.5 py-0.5 text-[10px] text-ink-muted">
+                  {l.closed_reason ? REASON_LABELS[l.closed_reason] ?? l.closed_reason : l.outcome ?? "fechado"}
+                </span>
+                {l.paused && <span className="rounded bg-warning/15 px-1.5 py-0.5 text-[10px] text-warning">IA pausada</span>}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
 
       <DndContext sensors={sensors} onDragStart={onDragStart} onDragEnd={onDragEnd} onDragCancel={() => setActiveDrag(null)}>
       <div className="flex flex-1 gap-3 overflow-x-auto px-4 py-4">

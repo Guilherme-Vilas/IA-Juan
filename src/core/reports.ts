@@ -207,8 +207,10 @@ export async function sendWeeklyDigests(tenants: TenantRow[]): Promise<void> {
       await sendText(tenant, tenant.owner_whatsapp_e164, text);
       logger.info({ tenant: tenant.slug }, "resumo semanal enviado");
     } catch (err) {
-      logger.error({ err, tenant: tenant.slug }, "resumo semanal falhou");
-      await redis.del(`digest:${tenant.id}:${isoWeek()}`).catch(() => undefined);
+      // NÃO reabre o dedupe: reabrir fazia o envio falho repetir a cada tick
+      // (tempestade de log/requisição com owner_whatsapp inválido). Falhou,
+      // fica falhado até a próxima semana — o erro abaixo é o alerta.
+      logger.error({ err, tenant: tenant.slug }, "resumo semanal falhou (sem retry até a próxima semana)");
     }
   }
 }
