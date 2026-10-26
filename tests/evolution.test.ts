@@ -45,6 +45,12 @@ test("parseWebhook: @lid sem alternativa mantém o lid (não quebra)", () => {
   assert.equal(p.waId, "123456789012345@lid");
 });
 
+test("parseWebhook: timestamp em segundos vira milissegundos (detecção de replay depende disso)", () => {
+  const p = parseWebhook(textPayload());
+  assert.ok(p);
+  assert.equal(p.timestamp, 1760000000 * 1000);
+});
+
 test("parseWebhook: fromMe é preservado (takeover depende disso)", () => {
   const p = parseWebhook(textPayload({}, { fromMe: true }));
   assert.ok(p);

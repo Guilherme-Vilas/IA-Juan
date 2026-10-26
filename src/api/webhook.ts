@@ -65,6 +65,18 @@ export async function registerRoutes(app: FastifyInstance) {
       const isEcho = await consumeEcho(tenant.slug, parsed.waId, parsed.text);
       if (isEcho) return reply.send({ ignored: "fromMe_echo" });
 
+      // Replay de histórico: quando o chip reconecta, a Evolution reenvia
+      // mensagens ANTIGAS como fromMe — sem marca de eco. Takeover só vale pra
+      // mensagem digitada AGORA; replay antigo pausaria a IA em massa.
+      const ageMs = Date.now() - parsed.timestamp;
+      if (!Number.isFinite(ageMs) || ageMs > 120_000) {
+        logger.info(
+          { tenant: tenant.slug, waId: parsed.waId, ageMs },
+          "fromMe antigo (replay de histórico) — ignorado, IA segue ativa",
+        );
+        return reply.send({ ignored: "fromMe_history_replay" });
+      }
+
       const existing = await getLead(tenant.id, parsed.waId);
       if (!existing) return reply.send({ ignored: "fromMe_not_a_lead" });
 
@@ -125,6 +137,25 @@ export async function registerRoutes(app: FastifyInstance) {
       text,
       messageId: parsed.messageId,
     });
+
+    // Cura de jobId envenenado: se um job antigo com este id FALHOU (ou ficou
+    // terminal), o BullMQ silenciosamente reutiliza o job morto no add() e a
+    // mensagem nunca processa. Remove o cadáver antes de agendar.
+    try {
+      const stale = await inboundQueue.getJob(debounceJobId(tenant.id, parsed.waId));
+      if (stale) {
+        const st = await stale.getState().catch(() => "unknown");
+        if (st === "failed" || st === "completed" || st === "unknown") {
+          await stale.remove().catch(() => undefined);
+          logger.warn(
+            { tenant: tenant.slug, waId: parsed.waId, prevState: st },
+            "debounce: job morto com o mesmo id removido (mensagem seria engolida)",
+          );
+        }
+      }
+    } catch {
+      /* diagnóstico é best-effort; o add abaixo segue */
+    }
 
     await inboundQueue
       .add(
