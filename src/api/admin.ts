@@ -75,7 +75,13 @@ export async function registerAdminRoutes(app: FastifyInstance) {
       const { waId } = req.params as { slug: string; waId: string };
       await reopenConversation(req.tenantId!, waId);
       await updateLead(req.tenantId!, waId, { paused: false });
-      logger.info({ tenant: req.tenantSlug, waId }, "admin: reopened");
+      // HANDOFF era "humano no controle" — reativar a IA devolve o lead pra
+      // trilha (senão follow-ups ficam desligados e o estado fica incoerente).
+      const lead = await getLead(req.tenantId!, waId);
+      if (lead?.state === "HANDOFF") {
+        await updateLead(req.tenantId!, waId, { state: "S1_DESCOBERTA" });
+      }
+      logger.info({ tenant: req.tenantSlug, waId }, "admin: reopened (IA reativada)");
       return reply.send({ ok: true });
     });
 

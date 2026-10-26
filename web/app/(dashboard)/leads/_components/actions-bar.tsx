@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { toastError } from "@/lib/toast";
 import { Button } from "@/components/ui/button";
 import type { Lead } from "@/lib/types";
 import { Pause, Play, X, Phone } from "lucide-react";
@@ -16,7 +17,18 @@ export function ActionsBar({ lead, onAction }: { lead: Lead; onAction: () => voi
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),
       });
-      if (!r.ok) alert(await r.text());
+      if (!r.ok) {
+        const raw = await r.text();
+        let msg = "Não consegui executar a ação — tente de novo.";
+        try {
+          const parsed = JSON.parse(raw) as { error?: string };
+          if (parsed.error && !/Fastify|statusCode/.test(parsed.error)) msg = parsed.error;
+        } catch {
+          /* mantém a mensagem amigável */
+        }
+        toastError(msg);
+        console.error("[lead action]", raw);
+      }
       else onAction();
     } finally {
       setBusy(false);

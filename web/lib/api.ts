@@ -6,8 +6,11 @@ const FASTIFY = process.env.FASTIFY_BASE_URL ?? "http://localhost:3000";
 // (JWT do cookie httpOnly como Bearer). O Fastify valida o vínculo user<->tenant.
 export async function adminCall(path: string, init?: RequestInit) {
   const token = getSessionToken();
+  // Content-Type json SÓ quando há corpo: POST vazio com esse header leva
+  // FST_ERR_CTP_EMPTY_JSON_BODY do Fastify (quebrava pausar/retomar a IA).
+  const hasBody = init?.body != null;
   const headers: Record<string, string> = {
-    "Content-Type": "application/json",
+    ...(hasBody ? { "Content-Type": "application/json" } : {}),
     ...((init?.headers as Record<string, string>) ?? {}),
   };
   if (token) headers.Authorization = `Bearer ${token}`;

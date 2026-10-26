@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { toastError } from "@/lib/toast";
 import type { Lead, Message } from "@/lib/types";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
@@ -34,7 +35,8 @@ export function Conversation({
       });
       if (!r.ok) {
         const e = await r.text();
-        alert(`Falha ao enviar: ${e}`);
+        toastError("Falha ao enviar a mensagem — tente de novo.");
+        console.error("[enviar mensagem]", e);
         return;
       }
       setText("");
