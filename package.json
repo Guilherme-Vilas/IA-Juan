@@ -14,6 +14,7 @@
     "migrate": "tsx scripts/migrate.ts",
     "backfill:campaign-pipeline": "tsx scripts/backfill-campaign-pipeline.ts",
     "unpause:stuck": "tsx scripts/unpause-stuck-leads.ts",
+    "reset:tenant": "tsx scripts/reset-tenant-data.ts",
     "check:llm": "tsx scripts/check-llm.ts",
     "calendar:auth": "tsx scripts/calendar-auth.ts",
     "typecheck": "tsc -p tsconfig.json --noEmit",
