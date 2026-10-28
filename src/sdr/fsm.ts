@@ -29,7 +29,7 @@ import { config } from "../config.js";
 import { isLlmBudgetExceeded, shouldNotifyBudgetExceeded } from "../core/llm-budget.js";
 import { logger } from "../core/logger.js";
 import { executeHandoff, pauseAi } from "./handoff.js";
-import { confirmSlot, fetchAndCacheSlots, formatOffer, getOfferedSlots } from "./scheduler.js";
+import { confirmSlot, fetchAndCacheSlots, formatOffer, getOfferedSlots, type ConfirmResult } from "./scheduler.js";
 import type { TenantRow } from "../core/tenants.js";
 import { getAgentSettings, type AgentSettingsRow } from "../core/agent-settings.js";
 
@@ -762,23 +762,51 @@ export async function runTurn(
           };
           // Sandbox: valida o índice contra os horários oferecidos mas NÃO cria
           // evento no calendário nem notifica o dono — agendamento de mentira.
-          const pick = sandbox
-            ? ((await getOfferedSlots(tenant, waId))[idx] ?? null)
-            : await confirmSlot(tenant, leadForConfirm, idx, channel);
-          if (pick) {
+          let result: ConfirmResult;
+          if (sandbox) {
+            const offered = await getOfferedSlots(tenant, waId);
+            const pick = offered[idx] ?? null;
+            result = pick
+              ? { ok: true, slot: pick }
+              : { ok: false, reason: offered.length === 0 ? "no_offer" : "invalid_index" };
+          } else {
+            result = await confirmSlot(tenant, leadForConfirm, idx, channel);
+          }
+          if (result.ok) {
             workingState = "S5_CONFIRMADO";
             closedReason = "scheduled";
             const channelLabel = channel === "video" ? "vídeo chamada 📹" : "ligação 📞";
-            toolResult = `confirmed:${pick.label} channel:${channel}`;
+            toolResult = `confirmed:${result.slot.label} channel:${channel}`;
             messages.push({ role: "tool", tool_call_id: tc.id, name, content: toolResult } as ChatMessage);
             messages.push({
               role: "system",
-              content: `Confirme ao lead que está marcado para ${pick.label} via ${channelLabel}, e diga que o ${tenant.owner_name} chama no horário.`,
+              content: `Confirme ao lead que está marcado para ${result.slot.label} via ${channelLabel}, e diga que o ${tenant.owner_name} chama no horário.`,
             });
             continue;
           }
-          const offered = await getOfferedSlots(tenant, waId);
-          toolResult = `invalid_index:available:${JSON.stringify(offered.map((s, i) => ({ i, label: s.label })))}`;
+          if (result.reason === "invalid_index") {
+            const offered = await getOfferedSlots(tenant, waId);
+            toolResult = `invalid_index:available:${JSON.stringify(offered.map((s, i) => ({ i, label: s.label })))}`;
+          } else {
+            // Oferta expirou (cache de 2h) ou o horário acabou de ser ocupado:
+            // busca horários atuais NA HORA e manda a IA re-oferecer — nunca
+            // deixa o modelo com uma lista vazia sem instrução.
+            const fresh = await fetchAndCacheSlots(tenant, waId);
+            toolResult = `${result.reason === "no_offer" ? "offer_expired" : "slot_taken"}:novos_slots:${JSON.stringify(
+              fresh.slots.map((s, i) => ({ i, label: s.label })),
+            )}`;
+            messages.push({ role: "tool", tool_call_id: tc.id, name, content: toolResult } as ChatMessage);
+            messages.push({
+              role: "system",
+              content:
+                (result.reason === "no_offer"
+                  ? "Os horários oferecidos antes não valem mais. "
+                  : "O horário que o lead escolheu acabou de ficar indisponível na agenda. ") +
+                "Avise o lead com naturalidade (sem termos técnicos tipo 'cache' ou 'expirou') e ofereça os NOVOS horários abaixo — só eles existem:\n\n" +
+                formatOffer(tenant, fresh.slots),
+            });
+            continue;
+          }
         }
 
         messages.push({ role: "tool", tool_call_id: tc.id, name, content: toolResult } as ChatMessage);

@@ -235,6 +235,43 @@ export async function listFreeSlots(tenant: TenantRow, daysAhead = 4, maxSlots =
   return slots;
 }
 
+// Reconfere se UM intervalo específico segue livre (agenda interna + Google).
+// A oferta fica cacheada por até 2h — outro lead ou o próprio dono pode ter
+// ocupado o horário nesse meio-tempo; sem esta checagem na confirmação, dava
+// double-booking.
+export async function isIntervalFree(
+  tenant: TenantRow,
+  startISO: string,
+  endISO: string,
+  opts: { excludeLeadId?: number } = {},
+): Promise<boolean> {
+  const start = DateTime.fromISO(startISO);
+  const end = DateTime.fromISO(endISO);
+  const target = Interval.fromDateTimes(start, end);
+  const busy = await listInternalBusyIntervals(tenant.id, start, end, opts.excludeLeadId);
+  if (busy.some((b) => b.overlaps(target))) return false;
+
+  const client = await getClient(tenant);
+  if (!client) return true;
+  try {
+    const fb = await client.cal.freebusy.query({
+      requestBody: {
+        timeMin: start.toISO()!,
+        timeMax: end.toISO()!,
+        timeZone: tenant.timezone,
+        items: [{ id: client.calendarId }],
+      },
+    });
+    const arr = fb.data.calendars?.[client.calendarId]?.busy ?? [];
+    return arr.length === 0;
+  } catch (err) {
+    // Fail-open: o horário era livre quando foi oferecido e a checagem interna
+    // passou — instabilidade do Google não deve travar a confirmação.
+    logger.warn({ err, tenant: tenant.slug }, "isIntervalFree: freebusy falhou — seguindo só com a checagem interna");
+    return true;
+  }
+}
+
 // Cancela o evento no Google (best-effort — a reunião interna já foi marcada
 // como cancelada no banco; isto é só pra agenda do dono não mostrar fantasma).
 export async function deleteEvent(tenant: TenantRow, eventId: string): Promise<void> {

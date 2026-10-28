@@ -82,6 +82,9 @@ export async function listInternalBusyIntervals(
   tenantId: number,
   from: DateTime,
   to: DateTime,
+  // Na reconferência de confirmação, a reunião anterior do PRÓPRIO lead não
+  // conta como conflito — ela será cancelada pela remarcação.
+  excludeLeadId?: number,
 ): Promise<Interval[]> {
   const { rows } = await pool.query<{ starts_at: Date; ends_at: Date }>(
     `SELECT scheduled_at AS starts_at, ends_at
@@ -90,13 +93,14 @@ export async function listInternalBusyIntervals(
         AND status IN ('scheduled', 'confirmed')
         AND scheduled_at < $3
         AND ends_at > $2
+        AND ($4::bigint IS NULL OR lead_id <> $4)
      UNION ALL
      SELECT starts_at, ends_at
        FROM tenant_calendar_blocks
       WHERE tenant_id = $1
         AND starts_at < $3
         AND ends_at > $2`,
-    [tenantId, from.toJSDate(), to.toJSDate()],
+    [tenantId, from.toJSDate(), to.toJSDate(), excludeLeadId ?? null],
   );
   return rows.map((r) =>
     Interval.fromDateTimes(DateTime.fromJSDate(r.starts_at), DateTime.fromJSDate(r.ends_at)),

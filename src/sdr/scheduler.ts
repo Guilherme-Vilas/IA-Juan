@@ -1,5 +1,5 @@
 import { redis, keys } from "../core/redis.js";
-import { listFreeSlots, createEvent, deleteEvent, type Slot } from "../core/calendar.js";
+import { listFreeSlots, createEvent, deleteEvent, isIntervalFree, type Slot } from "../core/calendar.js";
 import { pool, recordAppointment, type LeadRow, type MeetingChannel } from "../core/db.js";
 import { buildOffer, type SlotPreference } from "./slot-pick.js";
 import { notifyScheduled } from "./handoff.js";
@@ -34,17 +34,39 @@ export async function getOfferedSlots(tenant: TenantRow, waId: string): Promise<
   }
 }
 
+export type ConfirmResult =
+  | { ok: true; slot: Slot }
+  | { ok: false; reason: "no_offer" | "invalid_index" | "slot_taken" };
+
 export async function confirmSlot(
   tenant: TenantRow,
   lead: LeadRow,
   index: number,
   channel: MeetingChannel = "ligacao",
-): Promise<Slot | null> {
+): Promise<ConfirmResult> {
   const slots = await getOfferedSlots(tenant, lead.wa_id);
+  if (slots.length === 0) {
+    logger.info({ tenant: tenant.slug, waId: lead.wa_id }, "confirmSlot: oferta expirada/inexistente");
+    return { ok: false, reason: "no_offer" };
+  }
   const pick = slots[index];
   if (!pick) {
     logger.warn({ tenant: tenant.slug, waId: lead.wa_id, index }, "confirmSlot: invalid index");
-    return null;
+    return { ok: false, reason: "invalid_index" };
+  }
+  // A oferta fica cacheada por até 2h: reconfere que o horário não passou e que
+  // ninguém ocupou o intervalo nesse meio-tempo — ANTES de cancelar a reunião
+  // anterior do lead, pra ele nunca ficar sem nada marcado.
+  const stillValid =
+    new Date(pick.startISO).getTime() > Date.now() &&
+    (await isIntervalFree(tenant, pick.startISO, pick.endISO, { excludeLeadId: lead.id }));
+  if (!stillValid) {
+    logger.info(
+      { tenant: tenant.slug, waId: lead.wa_id, slot: pick.label },
+      "confirmSlot: horário não está mais disponível — oferta será refeita",
+    );
+    await redis.del(keys.offeredSlots(tenant.slug, lead.wa_id));
+    return { ok: false, reason: "slot_taken" };
   }
   // REMARCAÇÃO: cancela as reuniões futuras ainda ativas deste lead ANTES de
   // criar a nova — senão o horário antigo segue ocupando a agenda e os
@@ -93,7 +115,7 @@ export async function confirmSlot(
   } catch (err) {
     logger.warn({ err, leadId: lead.id }, "trigger appointment_scheduled falhou");
   }
-  return pick;
+  return { ok: true, slot: pick };
 }
 
 export function formatOffer(tenant: TenantRow, slots: Slot[]): string {
