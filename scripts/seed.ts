@@ -22,10 +22,13 @@ async function seedPrompts() {
     `SELECT id, slug, prompt_dir FROM tenants`,
   );
   for (const t of rows) {
-    const dir = t.prompt_dir || t.slug;
+    let dir = t.prompt_dir || t.slug;
     if (!fs.existsSync(path.join(promptsRoot, dir))) {
-      logger.warn({ tenant: t.slug, dir }, "seed: prompt dir não existe, pulando");
-      continue;
+      // Sem diretório próprio → usa o template DEFAULT. Pular deixava o tenant
+      // com o cérebro VAZIO: a IA virava chatbot genérico ("Como posso ajudar?")
+      // sem método de qualificação nenhum.
+      logger.warn({ tenant: t.slug, dir }, "seed: prompt dir não existe — usando template default");
+      dir = "default";
     }
     // NÃO sobrescreve prompts existentes: edições feitas pelo painel (e o
     // histórico de versões) sobrevivem ao deploy. Seed é só pro tenant novo.

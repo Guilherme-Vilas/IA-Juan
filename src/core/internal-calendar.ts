@@ -87,7 +87,7 @@ export async function listInternalBusyIntervals(
     `SELECT scheduled_at AS starts_at, ends_at
        FROM appointments
       WHERE tenant_id = $1
-        AND status = 'scheduled'
+        AND status IN ('scheduled', 'confirmed')
         AND scheduled_at < $3
         AND ends_at > $2
      UNION ALL

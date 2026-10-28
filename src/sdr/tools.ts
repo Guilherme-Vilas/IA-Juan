@@ -88,8 +88,23 @@ export const SDR_TOOLS: ToolDef[] = [
     type: "function",
     function: {
       name: "propose_schedule",
-      description: "Lead qualificado e topou marcar. A orquestração busca horários e devolve as opções.",
-      parameters: { type: "object", properties: {}, additionalProperties: false },
+      description:
+        "Busca horários REAIS na agenda e devolve as opções. Chame quando o lead topar marcar E TAMBÉM sempre que ele pedir um dia/horário específico ou pedir outras opções — NUNCA afirme ou sugira disponibilidade sem chamar esta tool.",
+      parameters: {
+        type: "object",
+        properties: {
+          preferencia_data: {
+            type: "string",
+            description: "dia que o LEAD pediu, formato YYYY-MM-DD (ex: lead disse 'quarta' → converta pra data). Omita se ele não pediu dia.",
+          },
+          preferencia_periodo: {
+            type: "string",
+            enum: ["manha", "tarde"],
+            description: "período que o lead pediu (manhã/tarde). Omita se não pediu.",
+          },
+        },
+        additionalProperties: false,
+      },
     },
   },
   {

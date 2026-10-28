@@ -163,7 +163,7 @@ export type Slot = { startISO: string; endISO: string; label: string };
 // Minutos "quebrados" para parecer uma agenda real, nao automacao de massa.
 const BROKEN_MINUTES = [15, 25, 40, 50, 35, 20, 45];
 
-export async function listFreeSlots(tenant: TenantRow, daysAhead = 4): Promise<Slot[]> {
+export async function listFreeSlots(tenant: TenantRow, daysAhead = 4, maxSlots = 6): Promise<Slot[]> {
   const client = await getClient(tenant);
   const tz = tenant.timezone;
   const duration = tenant.meeting_duration_min;
@@ -222,7 +222,7 @@ export async function listFreeSlots(tenant: TenantRow, daysAhead = 4): Promise<S
 
   const slots: Slot[] = [];
   for (const c of candidates) {
-    if (slots.length >= 6) break;
+    if (slots.length >= maxSlots) break;
     const end = c.plus({ minutes: duration });
     const candidate = Interval.fromDateTimes(c, end);
     if (busy.some((b) => b.overlaps(candidate))) continue;
@@ -233,6 +233,19 @@ export async function listFreeSlots(tenant: TenantRow, daysAhead = 4): Promise<S
     });
   }
   return slots;
+}
+
+// Cancela o evento no Google (best-effort — a reunião interna já foi marcada
+// como cancelada no banco; isto é só pra agenda do dono não mostrar fantasma).
+export async function deleteEvent(tenant: TenantRow, eventId: string): Promise<void> {
+  if (!eventId || eventId.startsWith("internal-")) return;
+  const client = await getClient(tenant);
+  if (!client) return;
+  try {
+    await client.cal.events.delete({ calendarId: client.calendarId, eventId });
+  } catch (err) {
+    logger.warn({ err, tenant: tenant.slug, eventId }, "deleteEvent falhou (evento pode já ter sido removido)");
+  }
 }
 
 export async function createEvent(

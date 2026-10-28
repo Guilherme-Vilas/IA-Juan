@@ -124,6 +124,7 @@ export function buildSystemPrompt(
   knowledgeContext?: string,
   stageGoal?: string,
   replyClass?: ReplyClass | null,
+  timezone = "America/Sao_Paulo",
 ): string {
   // ===== BLOCO ESTÁVEL =====
   // Persona + config do tenant + regra de estilo. É IDÊNTICO entre os turnos de
@@ -152,7 +153,25 @@ export function buildSystemPrompt(
   if (extra) variable.push("# Contexto adicional pra este estado", extra, "");
   if (stageGoal) variable.push("# Objetivo nesta etapa da pipeline", stageGoal, "");
   if (knowledgeContext) variable.push(knowledgeContext, "");
+  // Data/hora local: sem isso a IA não converte "quarta" em data na tool de
+  // agenda (e erra dia da semana em qualquer conversa sobre prazo).
+  let agora: string;
+  try {
+    agora = new Intl.DateTimeFormat("pt-BR", {
+      timeZone: timezone,
+      weekday: "long",
+      day: "2-digit",
+      month: "2-digit",
+      year: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+    }).format(new Date());
+  } catch {
+    agora = new Date().toISOString();
+  }
   variable.push(
+    `# Agora: ${agora} (use isto pra converter "amanhã"/"quarta" em data real)`,
+    "",
     "# Contexto do lead",
     `- estado (meta atual): ${lead.state}`,
     `- slots: ${JSON.stringify(lead.slots)}`,
@@ -523,6 +542,7 @@ export async function runTurn(
     knowledgeContext,
     stageGoal,
     replyClass,
+    tenant.timezone,
   );
 
   const messages: ChatMessage[] = [{ role: "system", content: systemPrompt }, ...history];
@@ -711,14 +731,25 @@ export async function runTurn(
           break;
         } else if (name === "propose_schedule") {
           workingState = "S4_AGENDAMENTO";
-          const slots = await fetchAndCacheSlots(tenant, waId);
-          toolResult = `slots:${JSON.stringify(slots.map((s, i) => ({ i, label: s.label })))}`;
+          const prefData = typeof args.preferencia_data === "string" && /^\d{4}-\d{2}-\d{2}$/.test(args.preferencia_data)
+            ? args.preferencia_data
+            : null;
+          const prefPeriodo = args.preferencia_periodo === "manha" || args.preferencia_periodo === "tarde"
+            ? args.preferencia_periodo
+            : null;
+          const offer = await fetchAndCacheSlots(tenant, waId, { dateISO: prefData, periodo: prefPeriodo });
+          toolResult = `slots:${JSON.stringify(offer.slots.map((s, i) => ({ i, label: s.label })))}${
+            offer.prefUnavailable ? " AVISO: o dia/período pedido NÃO tem horário livre — as opções acima são as alternativas reais." : ""
+          }`;
           messages.push({ role: "tool", tool_call_id: tc.id, name, content: toolResult } as ChatMessage);
           messages.push({
             role: "system",
             content:
-              `Agora ofereça os horários ao lead. Formato sugerido (mas adapte ao tom):\n\n` +
-              formatOffer(tenant, slots),
+              (offer.prefUnavailable
+                ? `O dia/período que o lead pediu NÃO tem horário disponível. Diga isso com clareza e ofereça as alternativas abaixo. `
+                : `Agora ofereça os horários ao lead. `) +
+              `REGRA DE HONESTIDADE: estes são os ÚNICOS horários que existem — nunca sugira outro dia/horário por conta própria; se o lead pedir outro dia, chame propose_schedule de novo com preferencia_data. Formato sugerido (adapte ao tom):\n\n` +
+              formatOffer(tenant, offer.slots),
           });
           continue;
         } else if (name === "confirm_schedule") {
