@@ -15,6 +15,7 @@ import {
 } from "../core/internal-calendar.js";
 import { listPlaybooks, setTenantPlaybook } from "../core/playbooks.js";
 import { invalidateTenantsCache } from "../core/tenants.js";
+import { pool } from "../core/db.js";
 import { getTenantPrompts, upsertTenantPrompts, snapshotPrompts, listPromptVersions, restorePromptVersion } from "../core/tenant-prompts.js";
 
 function stringArray(value: unknown): string[] {
@@ -52,6 +53,53 @@ export async function registerSaasRoutes(app: FastifyInstance) {
       if (err) return reply.code(400).send({ error: err });
       await saveFollowupConfig(req.tenantId!, body ?? {});
       return { ok: true, config: await getFollowupConfig(req.tenantId!) };
+    });
+
+    // ===== Alertas operacionais no WhatsApp (handoff, agendamento, SLA, tarefas) =====
+    scope.get("/admin/tenants/:slug/alerts", async (req) => {
+      const { rows } = await pool.query<{
+        alerts_enabled: boolean;
+        alert_whatsapp_e164: string;
+        owner_whatsapp_e164: string;
+      }>(
+        `SELECT alerts_enabled, alert_whatsapp_e164, owner_whatsapp_e164 FROM tenants WHERE id = $1`,
+        [req.tenantId!],
+      );
+      const t = rows[0]!;
+      return {
+        alerts: {
+          enabled: t.alerts_enabled,
+          whatsapp_e164: t.alert_whatsapp_e164,
+          owner_whatsapp_e164: t.owner_whatsapp_e164,
+        },
+      };
+    });
+
+    scope.patch("/admin/tenants/:slug/alerts", async (req, reply) => {
+      const body = req.body as { enabled?: boolean; whatsapp_e164?: string };
+      const updates: string[] = [];
+      const params: unknown[] = [];
+      if (typeof body.enabled === "boolean") {
+        params.push(body.enabled);
+        updates.push(`alerts_enabled = $${params.length}`);
+      }
+      if (typeof body.whatsapp_e164 === "string") {
+        // Só dígitos com DDI (ex: 5541999998888). Vazio = volta a usar o dono.
+        const digits = body.whatsapp_e164.replace(/\D/g, "");
+        if (digits && (digits.length < 10 || digits.length > 15)) {
+          return reply.code(400).send({ error: "número inválido — use DDI+DDD+número, ex: 5541999998888" });
+        }
+        params.push(digits);
+        updates.push(`alert_whatsapp_e164 = $${params.length}`);
+      }
+      if (updates.length === 0) return reply.code(400).send({ error: "nada para atualizar" });
+      params.push(req.tenantId!);
+      await pool.query(
+        `UPDATE tenants SET ${updates.join(", ")}, updated_at = now() WHERE id = $${params.length}`,
+        params,
+      );
+      await invalidateTenantsCache();
+      return { ok: true };
     });
 
     scope.get("/admin/tenants/:slug/agent-settings", async (req) => {

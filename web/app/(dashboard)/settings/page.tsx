@@ -7,6 +7,7 @@ import { AgentSettingsForm } from "./_components/agent-settings-form";
 import { CustomFieldsEditor } from "./_components/custom-fields-editor";
 import { CaptureCard } from "./_components/capture-card";
 import { FollowupEditor } from "./_components/followup-editor";
+import { AlertsCard, type AlertSettings } from "./_components/alerts-card";
 import { WebhooksManager } from "./_components/webhooks-manager";
 import { adminCall } from "@/lib/api";
 
@@ -39,18 +40,20 @@ type WebhookRow = {
 
 export default async function SettingsPage() {
   const tenant = await getCurrentTenant();
-  const [{ settings, playbook_slug }, { playbooks }, fieldDefs, followupRes, webhooksRes] = (await Promise.all([
+  const [{ settings, playbook_slug }, { playbooks }, fieldDefs, followupRes, webhooksRes, alertsRes] = (await Promise.all([
     agentApi(tenant.slug).get().catch(() => ({ settings: null, playbook_slug: null })),
     agentApi(tenant.slug).playbooks().catch(() => ({ playbooks: [] })),
     getFieldDefs(tenant.id).catch(() => []),
     adminCall(`/admin/tenants/${tenant.slug}/followups`, { method: "GET" }).catch(() => null),
     adminCall(`/admin/tenants/${tenant.slug}/webhooks`, { method: "GET" }).catch(() => null),
+    adminCall(`/admin/tenants/${tenant.slug}/alerts`, { method: "GET" }).catch(() => null),
   ])) as [
     { settings: AgentSettings | null; playbook_slug: string | null },
     { playbooks: PlaybookTemplate[] },
     CustomFieldDef[],
     { config: FollowupConfig } | null,
     { webhooks: WebhookRow[]; events: string[] } | null,
+    { alerts: AlertSettings } | null,
   ];
 
   const resolvedSettings: AgentSettings =
@@ -75,6 +78,7 @@ export default async function SettingsPage() {
           playbookSlug={playbook_slug}
           playbooks={playbooks}
         />
+        {alertsRes && <AlertsCard tenantSlug={tenant.slug} initial={alertsRes.alerts} />}
         {followupRes && <FollowupEditor tenantSlug={tenant.slug} initial={followupRes.config} />}
         <CustomFieldsEditor initial={fieldDefs} />
         <CaptureCard />

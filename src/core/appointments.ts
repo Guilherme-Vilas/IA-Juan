@@ -3,6 +3,7 @@ import { logger } from "./logger.js";
 import { sendText } from "./evolution.js";
 import { getTenantById, type TenantRow } from "./tenants.js";
 import { isWhatsappConnected } from "./connection-monitor.js";
+import { alertTarget } from "./notify.js";
 
 // Ciclo de vida da reunião. Comparecimento é onde a venda acontece — então:
 // 1) lembrete pro LEAD 24h e 1h antes (com pedido de confirmação);
@@ -118,13 +119,14 @@ async function scanOwnerNudges(tenantOf: (id: number) => Promise<TenantRow | nul
   );
   for (const r of rows) {
     const tenant = await tenantOf(r.tenant_id);
-    if (!tenant?.active || !tenant.owner_whatsapp_e164) continue;
+    const alertTo = tenant ? alertTarget(tenant) : null;
+    if (!tenant?.active || !alertTo) continue;
     const who = r.nome || r.wa_id;
     const hora = fmtHour(new Date(r.scheduled_at), tenant.timezone);
     try {
       await sendText(
         tenant,
-        tenant.owner_whatsapp_e164,
+        alertTo,
         `📋 A reunião com *${who}* era às ${hora}. Como foi?\n\nMarca no painel (Agenda): _Realizada_ ou _Não compareceu_ — assim o funil fica certo e, no caso de falta, dá pra reengajar.`,
       );
       await pool.query(`UPDATE appointments SET owner_nudge_sent_at = now() WHERE id = $1`, [r.id]);

@@ -18,18 +18,32 @@ export async function assigneeWhatsapp(tenantId: number, leadId: number): Promis
   return phone ? phone : null;
 }
 
-// Envia pro responsável do lead; sem responsável (ou sem telefone), vai pro dono.
+// Número padrão dos alertas operacionais: o dedicado configurado no painel
+// (Configurações → Alertas) e, vazio, o dono. Null = alertas desligados.
+export function alertTarget(tenant: TenantRow): string | null {
+  if (tenant.alerts_enabled === false) return null;
+  const dedicated = tenant.alert_whatsapp_e164?.trim();
+  return dedicated || tenant.owner_whatsapp_e164 || null;
+}
+
+// Envia pro responsável do lead; sem responsável (ou sem telefone), vai pro
+// número de alertas. Toggle desligado no painel silencia tudo por aqui.
 export async function notifyLeadOwner(tenant: TenantRow, leadId: number, text: string): Promise<void> {
+  if (tenant.alerts_enabled === false) {
+    logger.info({ tenant: tenant.slug, leadId }, "alerta suprimido: alertas desativados nas Configurações");
+    return;
+  }
   const assignee = await assigneeWhatsapp(tenant.id, leadId).catch(() => null);
-  const to = assignee ?? tenant.owner_whatsapp_e164;
+  const fallback = alertTarget(tenant);
+  const to = assignee ?? fallback;
   if (!to) return;
   try {
     await sendText(tenant, to, text);
   } catch (err) {
     logger.error({ err, tenant: tenant.slug, leadId }, "notifyLeadOwner failed");
-    // fallback: se o alvo era o vendedor e falhou, tenta o dono
-    if (assignee && tenant.owner_whatsapp_e164 && assignee !== tenant.owner_whatsapp_e164) {
-      await sendText(tenant, tenant.owner_whatsapp_e164, text).catch(() => undefined);
+    // fallback: se o alvo era o vendedor e falhou, tenta o número de alertas
+    if (assignee && fallback && assignee !== fallback) {
+      await sendText(tenant, fallback, text).catch(() => undefined);
     }
   }
 }
